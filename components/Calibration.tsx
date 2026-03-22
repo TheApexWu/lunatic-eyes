@@ -17,11 +17,11 @@ interface CalibrationProps {
 }
 
 const POINTS = [
-  { x: 0.1, y: 0.1, label: "TOP LEFT" },
-  { x: 0.9, y: 0.1, label: "TOP RIGHT" },
+  { x: 0.15, y: 0.15, label: "TOP LEFT" },
+  { x: 0.85, y: 0.15, label: "TOP RIGHT" },
   { x: 0.5, y: 0.5, label: "CENTER" },
-  { x: 0.1, y: 0.9, label: "BOTTOM LEFT" },
-  { x: 0.9, y: 0.9, label: "BOTTOM RIGHT" },
+  { x: 0.15, y: 0.75, label: "BOTTOM LEFT" },
+  { x: 0.85, y: 0.75, label: "BOTTOM RIGHT" },
 ];
 
 const SAMPLES_PER_POINT = 10;
@@ -143,8 +143,8 @@ export default function Calibration({ onComplete, faceMeshReady, getLandmarks }:
         }}
         onClick={collecting ? undefined : collectBurst}
       >
-        <div className={`w-10 h-10 rounded-full border-2 border-crimson flex items-center justify-center ${collecting ? "animate-pulse" : "hover:scale-125 transition-transform"}`}>
-          <div className={`w-5 h-5 rounded-full ${collecting ? "bg-crimson" : "bg-crimson/60"}`} />
+        <div className={`w-14 h-14 rounded-full border-2 border-crimson flex items-center justify-center ${collecting ? "animate-pulse" : "hover:scale-125 transition-transform"}`}>
+          <div className={`w-7 h-7 rounded-full ${collecting ? "bg-crimson" : "bg-crimson/60"}`} />
         </div>
       </div>
 

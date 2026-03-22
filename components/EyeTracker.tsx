@@ -25,9 +25,9 @@ interface EyeTrackerProps {
 
 const EAR_BLINK_THRESHOLD = 0.2;
 const INTERVENTION_THRESHOLDS = {
-  nudge: 5_000,
-  warning: 10_000,
-  force_close: 15_000,
+  nudge: 15_000,
+  warning: 30_000,
+  force_close: 45_000,
 };
 
 export default function EyeTracker({

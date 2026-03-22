@@ -18,7 +18,7 @@ export interface AttentionMetrics {
 const FIXATION_RADIUS = 50;
 const WINDOW_SIZE = 900;
 
-const WARMUP_MS = 5_000;
+const WARMUP_MS = 10_000;
 
 export class AttentionEngine {
   private gazeBuffer: GazePoint[] = [];
