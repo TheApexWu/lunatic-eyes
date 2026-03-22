@@ -44,31 +44,52 @@ async function closeTabsByPattern(patterns: string[]): Promise<{ target: string;
     // OpenClaw browser not running, continue to AppleScript
   }
 
-  // ALWAYS also check user's Chrome (AppleScript)
-  const conditions = patterns
+  // Close tabs in BOTH Chrome and Safari
+  const chromeConditions = patterns
     .map(p => `URL of atab contains "${sanitize(p)}"`)
     .join(" or ");
-  const script = `
+  const chromeScript = `
 tell application "Google Chrome"
   repeat with aWindow in every window
     set tabList to every tab of aWindow
     repeat with atab in tabList
       try
-        if ${conditions} then
+        if ${chromeConditions} then
           close atab
         end if
       end try
     end repeat
   end repeat
 end tell`;
-  try {
-    await execFileAsync("osascript", ["-e", script]);
-    for (const p of patterns) {
-      results.push({ target: p, ok: true, method: "applescript_fallback" });
+
+  const safariConditions = patterns
+    .map(p => `URL of t contains "${sanitize(p)}"`)
+    .join(" or ");
+  const safariScript = `
+tell application "Safari"
+  repeat with w in every window
+    repeat with t in every tab of w
+      try
+        if ${safariConditions} then
+          close t
+        end if
+      end try
+    end repeat
+  end repeat
+end tell`;
+
+  // Run both in parallel
+  const [chromeResult, safariResult] = await Promise.allSettled([
+    execFileAsync("osascript", ["-e", chromeScript]),
+    execFileAsync("osascript", ["-e", safariScript]),
+  ]);
+
+  for (const p of patterns) {
+    if (chromeResult.status === "fulfilled") {
+      results.push({ target: p, ok: true, method: "chrome" });
     }
-  } catch (err: any) {
-    for (const p of patterns) {
-      results.push({ target: p, ok: false, method: "applescript_fallback", error: err.message });
+    if (safariResult.status === "fulfilled") {
+      results.push({ target: p, ok: true, method: "safari" });
     }
   }
 

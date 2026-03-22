@@ -189,14 +189,20 @@ export default function Home() {
     [],
   );
 
-  // Session timer
+  // Keep ref synced for polling
+  const closeBlockedAppsRef = useRef(closeBlockedApps);
+  closeBlockedAppsRef.current = closeBlockedApps;
+
+  // Session timer + blocked site polling
   useEffect(() => {
     if (!tracking) return;
     if (sessionStartRef.current === 0) sessionStartRef.current = Date.now();
 
     const interval = setInterval(() => {
       setElapsed(Math.floor((Date.now() - sessionStartRef.current) / 1000));
-    }, 1000);
+      // Poll: close blocked tabs every 3s regardless of attention state
+      closeBlockedAppsRef.current().catch(() => {});
+    }, 3000);
 
     return () => clearInterval(interval);
   }, [tracking]);
