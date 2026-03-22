@@ -51,6 +51,7 @@ export default function EyeTracker({
   useEffect(() => {
     if (!active) return;
 
+    let cancelled = false;
     let stream: MediaStream | null = null;
 
     async function initCamera() {
@@ -64,20 +65,29 @@ export default function EyeTracker({
           }),
           timeoutPromise,
         ]);
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-          setCameraReady(true);
+        if (cancelled || !videoRef.current) {
+          stream?.getTracks().forEach((t) => t.stop());
+          return;
         }
-      } catch (err) {
-        setError("Camera access denied. Enable webcam permissions and reload.");
-        console.error("Camera error:", err);
+        videoRef.current.srcObject = stream;
+        try {
+          await videoRef.current.play();
+        } catch {
+          // play() interrupted by unmount, safe to ignore
+        }
+        if (!cancelled) setCameraReady(true);
+      } catch (err: any) {
+        if (!cancelled && err?.name !== "AbortError") {
+          setError("Camera access denied. Enable webcam permissions and reload.");
+          console.error("Camera error:", err);
+        }
       }
     }
 
     initCamera();
 
     return () => {
+      cancelled = true;
       stream?.getTracks().forEach((t) => t.stop());
       setCameraReady(false);
     };
@@ -291,6 +301,7 @@ export default function EyeTracker({
       <video
         ref={videoRef}
         className="absolute inset-0 w-full h-full object-cover"
+        autoPlay
         playsInline
         muted
         style={{ transform: "scaleX(-1)" }}
