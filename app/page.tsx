@@ -33,6 +33,7 @@ export default function Home() {
   const [gazeHistory, setGazeHistory] = useState<GazePoint[]>([]);
   const [showBreak, setShowBreak] = useState(false);
   const [intervention, setIntervention] = useState<"none" | "nudge" | "warning" | "force_close">("none");
+  const [interventionMessage, setInterventionMessage] = useState<string>("");
   const [voiceReady, setVoiceReady] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [calibration, setCalibration] = useState<GazeCalibration | null>(null);
@@ -107,47 +108,78 @@ export default function Home() {
     if (now - lastInterventionRef.current < 3_000) return;
     lastInterventionRef.current = now;
 
+    const metricsCtx = currentMetrics
+      ? `Blink rate: ${currentMetrics.blinkRate.toFixed(0)}/min (normal: 15-20). Gaze variance: ${currentMetrics.gazeVariance.toFixed(0)}px. Saccade speed: ${currentMetrics.saccadeSpeed.toFixed(0)}px/s. Fixation: ${currentMetrics.fixationDuration.toFixed(0)}ms.`
+      : "";
+    const policyCtx = sessionPolicy
+      ? `Blocking: ${sessionPolicy.block.join(", ") || "nothing"}. Allowing: ${sessionPolicy.allow.join(", ") || "everything"}. Tone: ${sessionPolicy.tone}.`
+      : "";
+
     try {
-      const policyCtx = sessionPolicy
-        ? `Blocking: ${sessionPolicy.block.join(", ") || "nothing"}. Allowing: ${sessionPolicy.allow.join(", ") || "everything"}. Tone: ${sessionPolicy.tone}.`
-        : "";
+      // All levels close blocked tabs
+      await closeBlockedApps();
 
       if (level === "nudge") {
-        // Nudge also closes blocked tabs for immediate demo visibility
-        await closeBlockedApps();
-        await fetch("/api/intervene", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "nudge",
-            target: `Goal: ${sessionIntent}. ${policyCtx} Attention drifting. Blink rate: ${currentMetrics?.blinkRate.toFixed(0)}/min. Variance: ${currentMetrics?.gazeVariance.toFixed(0)}px.`,
-          }),
-        });
-      } else if (level === "warning") {
-        // Warning level: close blocked apps + send nudge
-        await closeBlockedApps();
-        await fetch("/api/intervene", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "nudge",
-            target: `Goal: ${sessionIntent}. ${policyCtx} Attention distracted 2+ min. Blocked apps closed. Blink rate: ${currentMetrics?.blinkRate.toFixed(0)}/min.`,
-          }),
-        });
-      } else if (level === "force_close") {
-        // Force close: close blocked apps + escalate to OpenClaw
-        await closeBlockedApps();
-        await fetch("/api/intervene", {
+        const res = await fetch("/api/intervene", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "openclaw_message",
-            target: `Goal: ${sessionIntent}. ${policyCtx} User glazed 3+ min. Blocked apps closed. Blink rate: ${currentMetrics?.blinkRate.toFixed(0)}/min. Saccade: ${currentMetrics?.saccadeSpeed.toFixed(0)}px/s. Force break.`,
+            target: `You are Lunatic Eyes, an attention monitor. The user's goal: "${sessionIntent}". ${policyCtx} Their attention is DRIFTING. ${metricsCtx} Write a single-sentence nudge (under 20 words) referencing their goal. Be direct, ${sessionPolicy?.tone || "firm"}.`,
           }),
         });
+        const data = await res.json();
+        if (data.response) {
+          try {
+            const parsed = JSON.parse(data.response);
+            setInterventionMessage(parsed?.message || parsed?.content || data.response);
+          } catch {
+            setInterventionMessage(data.response);
+          }
+        }
+      } else if (level === "warning") {
+        const res = await fetch("/api/intervene", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "openclaw_message",
+            target: `You are Lunatic Eyes, an attention monitor. The user's goal: "${sessionIntent}". ${policyCtx} Their attention has been DISTRACTED for 10+ seconds. Blocked tabs were just closed. ${metricsCtx} Write a single-sentence warning (under 25 words). Reference their goal and what was blocked. Be sharp, ${sessionPolicy?.tone || "firm"}.`,
+          }),
+        });
+        const data = await res.json();
+        if (data.response) {
+          try {
+            const parsed = JSON.parse(data.response);
+            setInterventionMessage(parsed?.message || parsed?.content || data.response);
+          } catch {
+            setInterventionMessage(data.response);
+          }
+        }
+      } else if (level === "force_close") {
+        const res = await fetch("/api/intervene", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "openclaw_message",
+            target: `You are Lunatic Eyes, an attention monitor. The user's goal: "${sessionIntent}". ${policyCtx} They have been GLAZED for 15+ seconds. All blocked tabs closed. Session forcefully paused. ${metricsCtx} Write a 2-3 sentence assessment of what happened. Be direct. Reference their biometrics. End with one actionable suggestion. Tone: ${sessionPolicy?.tone || "firm"}.`,
+          }),
+        });
+        const data = await res.json();
+        if (data.response) {
+          try {
+            const parsed = JSON.parse(data.response);
+            setInterventionMessage(parsed?.message || parsed?.content || data.response);
+          } catch {
+            setInterventionMessage(data.response);
+          }
+        }
       }
     } catch (err) {
       console.error("Intervention failed:", err);
+      // Fallback messages if OpenClaw fails
+      if (level === "nudge") setInterventionMessage("Your attention is drifting. Refocus.");
+      if (level === "warning") setInterventionMessage("Blocked tabs closed. Your eyes are glazing.");
+      if (level === "force_close") setInterventionMessage("Session paused. Take a break and refocus.");
     }
   }, [sessionIntent, sessionPolicy, closeBlockedApps]);
 
@@ -244,16 +276,24 @@ export default function Home() {
           metrics={metrics}
           gazeHistory={gazeHistory}
           sessionIntent={sessionIntent}
+          agentMessage={interventionMessage}
           onDismiss={() => {
             setShowBreak(false);
             setIntervention("none");
+            setInterventionMessage("");
           }}
         />
       )}
 
+      {intervention === "nudge" && interventionMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-zinc-950 border border-crimson/60 text-zinc-200 px-5 py-3 rounded-xl max-w-sm text-sm shadow-lg shadow-crimson/10">
+          {interventionMessage}
+        </div>
+      )}
+
       {intervention === "warning" && !showBreak && (
         <div className="fixed top-0 inset-x-0 z-50 bg-crimson/90 text-white text-center py-3 font-bold tracking-wide">
-          YOUR EYES ARE GLAZING
+          {interventionMessage || "YOUR EYES ARE GLAZING"}
         </div>
       )}
 

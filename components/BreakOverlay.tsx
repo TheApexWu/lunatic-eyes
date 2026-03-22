@@ -6,6 +6,7 @@ interface BreakOverlayProps {
   metrics: AttentionMetrics | null;
   gazeHistory: GazePoint[];
   sessionIntent?: string | null;
+  agentMessage?: string;
   onDismiss: () => void;
 }
 
@@ -13,6 +14,7 @@ export default function BreakOverlay({
   metrics,
   gazeHistory,
   sessionIntent,
+  agentMessage,
   onDismiss,
 }: BreakOverlayProps) {
   const sessionDuration = gazeHistory.length > 0
@@ -55,7 +57,14 @@ export default function BreakOverlay({
           </p>
         )}
 
-        <p className="text-zinc-300 text-base leading-relaxed">
+        {agentMessage && (
+          <div className="bg-zinc-900 border border-crimson/30 rounded-lg p-4">
+            <div className="text-xs text-crimson uppercase tracking-wider mb-2">OpenClaw Assessment</div>
+            <p className="text-zinc-200 text-sm leading-relaxed">{agentMessage}</p>
+          </div>
+        )}
+
+        <p className="text-zinc-400 text-sm leading-relaxed">
           {diagnosis}
         </p>
 
