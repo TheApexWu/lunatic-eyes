@@ -3,9 +3,11 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import SessionIntent, { type SessionPolicy } from "@/components/SessionIntent";
+import Calibration, { type CalibrationData } from "@/components/Calibration";
 import Dashboard from "@/components/Dashboard";
 import BreakOverlay from "@/components/BreakOverlay";
 import type { AttentionState, AttentionMetrics, GazePoint } from "@/lib/attention";
+import type { GazeCalibration } from "@/lib/gaze";
 
 const EyeTracker = dynamic(() => import("@/components/EyeTracker"), {
   ssr: false,
@@ -33,6 +35,9 @@ export default function Home() {
   const [intervention, setIntervention] = useState<"none" | "nudge" | "warning" | "force_close">("none");
   const [voiceReady, setVoiceReady] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [calibration, setCalibration] = useState<GazeCalibration | null>(null);
+  const [calibrating, setCalibrating] = useState(false);
+  const landmarksRef = useRef<{ x: number; y: number }[] | null>(null);
   const lastInterventionRef = useRef<number>(0);
   const sessionStartRef = useRef<number>(0);
 
@@ -198,7 +203,9 @@ export default function Home() {
     return <SessionIntent onStart={(intent, policy) => {
       setSessionIntent(intent);
       setSessionPolicy(policy);
+      // Start camera + facemesh but don't track yet -- need calibration first
       setTracking(true);
+      setCalibrating(true);
     }} />;
   }
 
@@ -206,6 +213,17 @@ export default function Home() {
     <main
       className={`min-h-screen ${intervention === "nudge" ? "nudge-pulse" : ""}`}
     >
+      {calibrating && (
+        <Calibration
+          faceMeshReady={tracking}
+          getLandmarks={() => landmarksRef.current}
+          onComplete={(data: CalibrationData) => {
+            setCalibration(data);
+            setCalibrating(false);
+          }}
+        />
+      )}
+
       {showBreak && (
         <BreakOverlay
           metrics={metrics}
@@ -284,6 +302,8 @@ export default function Home() {
             <EyeTracker
               active={tracking}
               showMesh={showMesh}
+              calibration={calibration}
+              landmarksRef={landmarksRef}
               onMetricsUpdate={handleMetricsUpdate}
               onGazeUpdate={handleGazeUpdate}
               onIntervention={handleIntervention}

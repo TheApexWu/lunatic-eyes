@@ -135,48 +135,69 @@ function drawEyeOutline(
   ctx.stroke();
 }
 
-// Estimate gaze screen position from iris landmarks
-// Maps iris position within eye socket to screen coordinates
-export function estimateGaze(
+// Calibration ranges (personalized via 5-point calibration, or defaults)
+export interface GazeCalibration {
+  minRatioX: number;
+  maxRatioX: number;
+  minRatioY: number;
+  maxRatioY: number;
+}
+
+export const DEFAULT_CALIBRATION: GazeCalibration = {
+  minRatioX: 0.3,
+  maxRatioX: 0.7,
+  minRatioY: 0.25,
+  maxRatioY: 0.75,
+};
+
+// Extract raw iris ratios (used by both calibration and gaze estimation)
+export function getIrisRatios(
   landmarks: { x: number; y: number }[],
-  screenW: number,
-  screenH: number,
-): { x: number; y: number } | null {
-  // Left eye corners: 33 (outer), 133 (inner)
-  // Right eye corners: 362 (outer), 263 (inner)
+): { rx: number; ry: number } | null {
   const leftOuter = landmarks[33];
   const leftInner = landmarks[133];
   const rightOuter = landmarks[362];
   const rightInner = landmarks[263];
-  const leftIris = landmarks[468]; // left iris center
-  const rightIris = landmarks[473]; // right iris center
-
-  if (!leftOuter || !leftInner || !rightOuter || !rightInner || !leftIris || !rightIris) {
-    return null;
-  }
-
-  // Compute iris ratio within eye socket (0 = outer corner, 1 = inner corner)
-  const leftRatioX = (leftIris.x - leftOuter.x) / (leftInner.x - leftOuter.x || 0.001);
-  const rightRatioX = (rightIris.x - rightInner.x) / (rightOuter.x - rightInner.x || 0.001);
-
-  // Vertical: use top/bottom eyelid for Y ratio
-  const leftTop = landmarks[159]; // upper eyelid
-  const leftBot = landmarks[145]; // lower eyelid
+  const leftIris = landmarks[468];
+  const rightIris = landmarks[473];
+  const leftTop = landmarks[159];
+  const leftBot = landmarks[145];
   const rightTop = landmarks[386];
   const rightBot = landmarks[374];
 
-  if (!leftTop || !leftBot || !rightTop || !rightBot) return null;
+  if (!leftOuter || !leftInner || !rightOuter || !rightInner ||
+      !leftIris || !rightIris || !leftTop || !leftBot || !rightTop || !rightBot) {
+    return null;
+  }
 
+  const leftRatioX = (leftIris.x - leftOuter.x) / (leftInner.x - leftOuter.x || 0.001);
+  const rightRatioX = (rightIris.x - rightInner.x) / (rightOuter.x - rightInner.x || 0.001);
   const leftRatioY = (leftIris.y - leftTop.y) / (leftBot.y - leftTop.y || 0.001);
   const rightRatioY = (rightIris.y - rightTop.y) / (rightBot.y - rightTop.y || 0.001);
 
-  // Average both eyes
-  const ratioX = (leftRatioX + rightRatioX) / 2;
-  const ratioY = (leftRatioY + rightRatioY) / 2;
+  return {
+    rx: (leftRatioX + rightRatioX) / 2,
+    ry: (leftRatioY + rightRatioY) / 2,
+  };
+}
 
-  // Map to screen with margins (iris range is roughly 0.3-0.7, expand to full screen)
-  const normalizedX = (ratioX - 0.3) / 0.4; // 0.3-0.7 range -> 0-1
-  const normalizedY = (ratioY - 0.25) / 0.5; // 0.25-0.75 range -> 0-1
+// Estimate gaze screen position from iris landmarks
+// Uses calibration data for personalized mapping
+export function estimateGaze(
+  landmarks: { x: number; y: number }[],
+  screenW: number,
+  screenH: number,
+  cal?: GazeCalibration,
+): { x: number; y: number } | null {
+  const ratios = getIrisRatios(landmarks);
+  if (!ratios) return null;
+
+  const c = cal || DEFAULT_CALIBRATION;
+  const rangeX = c.maxRatioX - c.minRatioX || 0.001;
+  const rangeY = c.maxRatioY - c.minRatioY || 0.001;
+
+  const normalizedX = (ratios.rx - c.minRatioX) / rangeX;
+  const normalizedY = (ratios.ry - c.minRatioY) / rangeY;
 
   // Mirror X (looking left = screen right when facing camera)
   const screenX = (1 - Math.max(0, Math.min(1, normalizedX))) * screenW;

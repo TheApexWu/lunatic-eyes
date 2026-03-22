@@ -9,30 +9,35 @@ import {
   estimateGaze,
   LEFT_EYE,
   RIGHT_EYE,
+  type GazeCalibration,
 } from "@/lib/gaze";
 import { AttentionEngine, type AttentionState, type AttentionMetrics, type GazePoint } from "@/lib/attention";
 
 interface EyeTrackerProps {
   active: boolean;
   showMesh: boolean;
+  calibration: GazeCalibration | null;
   onMetricsUpdate: (metrics: AttentionMetrics, state: AttentionState) => void;
   onGazeUpdate: (point: GazePoint) => void;
   onIntervention: (level: "none" | "nudge" | "warning" | "force_close") => void;
+  landmarksRef?: React.MutableRefObject<{ x: number; y: number }[] | null>;
 }
 
 const EAR_BLINK_THRESHOLD = 0.2;
 const INTERVENTION_THRESHOLDS = {
-  nudge: 60_000,
-  warning: 120_000,
-  force_close: 180_000,
+  nudge: 10_000,
+  warning: 20_000,
+  force_close: 30_000,
 };
 
 export default function EyeTracker({
   active,
   showMesh,
+  calibration,
   onMetricsUpdate,
   onGazeUpdate,
   onIntervention,
+  landmarksRef: externalLandmarksRef,
 }: EyeTrackerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -51,12 +56,14 @@ export default function EyeTracker({
   const lastGazePostRef = useRef(0);
   const smoothGazeRef = useRef<{ x: number; y: number } | null>(null);
   const SMOOTHING = 0.15; // lower = smoother, higher = more responsive
+  const calibrationRef = useRef<GazeCalibration | null>(calibration);
   const onGazeUpdateRef = useRef(onGazeUpdate);
   const onMetricsUpdateRef = useRef(onMetricsUpdate);
   const onInterventionRef = useRef(onIntervention);
 
   // Keep refs synced
   showMeshRef.current = showMesh;
+  calibrationRef.current = calibration;
   onGazeUpdateRef.current = onGazeUpdate;
   onMetricsUpdateRef.current = onMetricsUpdate;
   onInterventionRef.current = onIntervention;
@@ -148,6 +155,8 @@ export default function EyeTracker({
           if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
 
           const landmarks = results.multiFaceLandmarks[0];
+          // Expose landmarks for calibration component
+          if (externalLandmarksRef) externalLandmarksRef.current = landmarks;
           const canvas = canvasRef.current;
           if (!canvas) return;
 
@@ -182,7 +191,7 @@ export default function EyeTracker({
           // Gaze estimation from iris position (use full screen, not just browser)
           const screenW = typeof window !== "undefined" ? screen.width : 1920;
           const screenH = typeof window !== "undefined" ? screen.height : 1080;
-          const gaze = estimateGaze(landmarks, screenW, screenH);
+          const gaze = estimateGaze(landmarks, screenW, screenH, calibrationRef.current ?? undefined);
 
           if (gaze) {
             // EMA smoothing
