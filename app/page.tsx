@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
-import SessionIntent from "@/components/SessionIntent";
+import SessionIntent, { type SessionPolicy } from "@/components/SessionIntent";
 import Dashboard from "@/components/Dashboard";
 import BreakOverlay from "@/components/BreakOverlay";
 import type { AttentionState, AttentionMetrics, GazePoint } from "@/lib/attention";
@@ -22,6 +22,7 @@ const VoiceGate = dynamic(() => import("@/components/VoiceGate"), {
 
 export default function Home() {
   const [sessionIntent, setSessionIntent] = useState<string | null>(null);
+  const [sessionPolicy, setSessionPolicy] = useState<SessionPolicy | null>(null);
   const [tracking, setTracking] = useState(false);
   const [showMesh, setShowMesh] = useState(false);
   const [attentionState, setAttentionState] = useState<AttentionState>("focused");
@@ -54,13 +55,17 @@ export default function Home() {
     lastInterventionRef.current = now;
 
     try {
+      const policyCtx = sessionPolicy
+        ? `Blocking: ${sessionPolicy.block.join(", ") || "nothing"}. Allowing: ${sessionPolicy.allow.join(", ") || "everything"}. Tone: ${sessionPolicy.tone}.`
+        : "";
+
       if (level === "nudge") {
         await fetch("/api/intervene", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "nudge",
-            target: `Session goal: ${sessionIntent}. Attention drifting. Blink rate: ${currentMetrics?.blinkRate.toFixed(0)}/min. Variance: ${currentMetrics?.gazeVariance.toFixed(0)}px.`,
+            target: `Goal: ${sessionIntent}. ${policyCtx} Attention drifting. Blink rate: ${currentMetrics?.blinkRate.toFixed(0)}/min. Variance: ${currentMetrics?.gazeVariance.toFixed(0)}px.`,
           }),
         });
       } else if (level === "force_close") {
@@ -69,14 +74,14 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "openclaw_message",
-            target: `Session goal: ${sessionIntent}. User glazed 3+ min. Blink rate: ${currentMetrics?.blinkRate.toFixed(0)}/min. Saccade: ${currentMetrics?.saccadeSpeed.toFixed(0)}px/s. Intervene.`,
+            target: `Goal: ${sessionIntent}. ${policyCtx} User glazed 3+ min. Blink rate: ${currentMetrics?.blinkRate.toFixed(0)}/min. Saccade: ${currentMetrics?.saccadeSpeed.toFixed(0)}px/s. Intervene.`,
           }),
         });
       }
     } catch (err) {
       console.error("Intervention failed:", err);
     }
-  }, [sessionIntent]);
+  }, [sessionIntent, sessionPolicy]);
 
   const handleIntervention = useCallback(
     (level: "none" | "nudge" | "warning" | "force_close") => {
@@ -114,8 +119,9 @@ export default function Home() {
 
   // Session intent gate: user sets their goal before anything starts
   if (!sessionIntent) {
-    return <SessionIntent onStart={(intent) => {
+    return <SessionIntent onStart={(intent, policy) => {
       setSessionIntent(intent);
+      setSessionPolicy(policy);
       setTracking(true);
     }} />;
   }
@@ -245,6 +251,21 @@ export default function Home() {
                   </div>
                 </div>
               </>
+            )}
+
+            {sessionPolicy && sessionPolicy.block.length > 0 && (
+              <div className="bg-zinc-950 border border-crimson/30 rounded-xl p-4">
+                <h3 className="text-xs text-crimson uppercase tracking-wider mb-2">
+                  Blocking
+                </h3>
+                <div className="flex flex-wrap gap-1">
+                  {sessionPolicy.block.map((item) => (
+                    <span key={item} className="text-xs px-2 py-0.5 rounded bg-crimson/10 text-crimson border border-crimson/20">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              </div>
             )}
 
             {voiceReady && (

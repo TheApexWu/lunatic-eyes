@@ -46,6 +46,10 @@ export default function EyeTracker({
   });
   const [cameraReady, setCameraReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const showMeshRef = useRef(showMesh);
+  const blinkOpenRef = useRef(true); // true = eyes open, for edge detection
+
+  showMeshRef.current = showMesh;
 
   // Camera only initializes when user clicks START
   useEffect(() => {
@@ -138,7 +142,7 @@ export default function EyeTracker({
           if (!ctx) return;
 
           // Always compute metrics, only draw if showMesh is on
-          if (showMesh) {
+          if (showMeshRef.current) {
             drawFaceMesh(ctx, landmarks, canvas.width, canvas.height);
           } else {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -148,8 +152,14 @@ export default function EyeTracker({
           const rightEAR = computeEAR(landmarks, RIGHT_EYE);
           const avgEAR = (leftEAR + rightEAR) / 2;
 
+          // Edge detection: only count blink on open->closed transition
           if (avgEAR < EAR_BLINK_THRESHOLD) {
-            engineRef.current.addBlink(Date.now());
+            if (blinkOpenRef.current) {
+              engineRef.current.addBlink(Date.now());
+              blinkOpenRef.current = false;
+            }
+          } else {
+            blinkOpenRef.current = true;
           }
 
           const irisSize = computeIrisSize(landmarks, canvas.width, canvas.height);
@@ -316,7 +326,6 @@ export default function EyeTracker({
         width={typeof window !== "undefined" ? window.innerWidth : 1920}
         height={typeof window !== "undefined" ? window.innerHeight : 1080}
         className="fixed inset-0 pointer-events-none z-40"
-        style={{ display: showMesh ? "block" : "none" }}
       />
 
       <div className="absolute inset-0 scanline pointer-events-none" />

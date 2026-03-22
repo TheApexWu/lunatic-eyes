@@ -2,8 +2,15 @@
 
 import { useState } from "react";
 
+export interface SessionPolicy {
+  goal: string;
+  allow: string[];
+  block: string[];
+  tone: "gentle" | "firm" | "strict";
+}
+
 interface SessionIntentProps {
-  onStart: (intent: string) => void;
+  onStart: (intent: string, policy: SessionPolicy) => void;
 }
 
 const PRESETS = [
@@ -15,6 +22,32 @@ const PRESETS = [
 
 export default function SessionIntent({ onStart }: SessionIntentProps) {
   const [intent, setIntent] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleStart = async () => {
+    const text = intent || "General focus session";
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/intent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ intent: text }),
+      });
+      const data = await res.json();
+      onStart(text, data.parsed);
+    } catch {
+      // Fallback if intent API fails
+      onStart(text, {
+        goal: text,
+        allow: ["everything"],
+        block: [],
+        tone: "gentle",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
@@ -53,10 +86,11 @@ export default function SessionIntent({ onStart }: SessionIntentProps) {
         </div>
 
         <button
-          onClick={() => onStart(intent || "General focus session")}
-          className="w-full py-3 rounded-xl bg-crimson text-white font-bold tracking-wide hover:bg-crimson-dim transition-colors"
+          onClick={handleStart}
+          disabled={loading}
+          className="w-full py-3 rounded-xl bg-crimson text-white font-bold tracking-wide hover:bg-crimson-dim transition-colors disabled:opacity-50"
         >
-          START SESSION
+          {loading ? "PARSING INTENT..." : "START SESSION"}
         </button>
 
         <p className="text-center text-xs text-zinc-600">
