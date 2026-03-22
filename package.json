@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
+    "overlay": "./overlay/gaze-overlay",
+    "dev:full": "npm run overlay & next dev --webpack",
     "build": "next build",
     "start": "next start"
   },

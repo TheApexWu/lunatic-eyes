@@ -5,3 +5,5 @@ out/
 .env.local
 *.tsbuildinfo
 next-env.d.ts
+overlay/gaze-overlay
+/tmp/lunatic-gaze.json

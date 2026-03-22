@@ -48,6 +48,7 @@ export default function EyeTracker({
   const [error, setError] = useState<string | null>(null);
   const showMeshRef = useRef(showMesh);
   const blinkOpenRef = useRef(true);
+  const lastGazePostRef = useRef(0);
   const onGazeUpdateRef = useRef(onGazeUpdate);
   const onMetricsUpdateRef = useRef(onMetricsUpdate);
   const onInterventionRef = useRef(onIntervention);
@@ -176,9 +177,9 @@ export default function EyeTracker({
           const irisSize = computeIrisSize(landmarks, canvas.width, canvas.height);
           engineRef.current.setIrisSize(irisSize);
 
-          // Gaze estimation from iris position
-          const screenW = typeof window !== "undefined" ? window.innerWidth : 1920;
-          const screenH = typeof window !== "undefined" ? window.innerHeight : 1080;
+          // Gaze estimation from iris position (use full screen, not just browser)
+          const screenW = typeof window !== "undefined" ? screen.width : 1920;
+          const screenH = typeof window !== "undefined" ? screen.height : 1080;
           const gaze = estimateGaze(landmarks, screenW, screenH);
 
           if (gaze) {
@@ -190,7 +191,7 @@ export default function EyeTracker({
             engineRef.current.addGaze(point);
             onGazeUpdateRef.current(point);
 
-            // Draw gaze dot on screen overlay
+            // Draw gaze dot in browser overlay
             const gazeCanvas = gazeCanvasRef.current;
             if (gazeCanvas) {
               const gctx = gazeCanvas.getContext("2d");
@@ -198,6 +199,17 @@ export default function EyeTracker({
                 gctx.clearRect(0, 0, gazeCanvas.width, gazeCanvas.height);
                 drawGazeDot(gctx, gaze.x, gaze.y);
               }
+            }
+
+            // Send to native overlay (throttled ~15fps)
+            const now = Date.now();
+            if (now - lastGazePostRef.current > 66) {
+              lastGazePostRef.current = now;
+              fetch("/api/gaze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ x: gaze.x, y: gaze.y }),
+              }).catch(() => {});
             }
           }
 
