@@ -25,6 +25,7 @@ export default function Home() {
   const [sessionPolicy, setSessionPolicy] = useState<SessionPolicy | null>(null);
   const [tracking, setTracking] = useState(false);
   const [showMesh, setShowMesh] = useState(false);
+  const [showDot, setShowDot] = useState(true);
   const [attentionState, setAttentionState] = useState<AttentionState>("focused");
   const [metrics, setMetrics] = useState<AttentionMetrics | null>(null);
   const [gazeHistory, setGazeHistory] = useState<GazePoint[]>([]);
@@ -182,6 +183,24 @@ export default function Home() {
               onReady={() => setVoiceReady(true)}
               onCommand={handleVoiceCommand}
             />
+            <button
+              onClick={() => {
+                const next = !showDot;
+                setShowDot(next);
+                fetch("/api/gaze", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ x: 0, y: 0, visible: next }),
+                }).catch(() => {});
+              }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                showDot
+                  ? "bg-crimson/20 text-crimson border border-crimson/40"
+                  : "bg-zinc-900 text-zinc-400 border border-zinc-700 hover:border-zinc-500"
+              }`}
+            >
+              {showDot ? "DOT ON" : "DOT OFF"}
+            </button>
             <button
               onClick={() => setShowMesh(!showMesh)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${

@@ -49,6 +49,8 @@ export default function EyeTracker({
   const showMeshRef = useRef(showMesh);
   const blinkOpenRef = useRef(true);
   const lastGazePostRef = useRef(0);
+  const smoothGazeRef = useRef<{ x: number; y: number } | null>(null);
+  const SMOOTHING = 0.15; // lower = smoother, higher = more responsive
   const onGazeUpdateRef = useRef(onGazeUpdate);
   const onMetricsUpdateRef = useRef(onMetricsUpdate);
   const onInterventionRef = useRef(onIntervention);
@@ -183,9 +185,19 @@ export default function EyeTracker({
           const gaze = estimateGaze(landmarks, screenW, screenH);
 
           if (gaze) {
+            // EMA smoothing
+            if (!smoothGazeRef.current) {
+              smoothGazeRef.current = { x: gaze.x, y: gaze.y };
+            } else {
+              smoothGazeRef.current.x += SMOOTHING * (gaze.x - smoothGazeRef.current.x);
+              smoothGazeRef.current.y += SMOOTHING * (gaze.y - smoothGazeRef.current.y);
+            }
+            const sx = smoothGazeRef.current.x;
+            const sy = smoothGazeRef.current.y;
+
             const point: GazePoint = {
-              x: gaze.x,
-              y: gaze.y,
+              x: sx,
+              y: sy,
               timestamp: Date.now(),
             };
             engineRef.current.addGaze(point);
@@ -197,7 +209,7 @@ export default function EyeTracker({
               const gctx = gazeCanvas.getContext("2d");
               if (gctx) {
                 gctx.clearRect(0, 0, gazeCanvas.width, gazeCanvas.height);
-                drawGazeDot(gctx, gaze.x, gaze.y);
+                drawGazeDot(gctx, sx, sy);
               }
             }
 
@@ -208,7 +220,7 @@ export default function EyeTracker({
               fetch("/api/gaze", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ x: gaze.x, y: gaze.y }),
+                body: JSON.stringify({ x: sx, y: sy }),
               }).catch(() => {});
             }
           }

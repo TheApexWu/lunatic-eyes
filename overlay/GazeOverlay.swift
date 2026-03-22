@@ -60,17 +60,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func updatePosition() {
         let path = "/tmp/lunatic-gaze.json"
         guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Double],
-              let x = json["x"],
-              let y = json["y"] else { return }
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let x = json["x"] as? Double,
+              let y = json["y"] as? Double else { return }
+
+        let visible = (json["visible"] as? Bool) ?? true
 
         let screen = NSScreen.main!.frame
         let half = dotSize / 2
-        // macOS screen coords: origin bottom-left, browser coords: origin top-left
         let screenX = x - half
         let screenY = screen.height - y - half
 
         DispatchQueue.main.async { [weak self] in
+            self?.dotView.isHidden = !visible
             self?.dotView.frame.origin = CGPoint(x: screenX, y: screenY)
         }
     }
