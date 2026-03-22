@@ -191,10 +191,6 @@ export default function EyeTracker({
         const webgazer = (window as any).webgazer;
         if (!webgazer) throw new Error("WebGazer not available on window");
 
-        // Use existing video element to avoid duplicate camera stream
-        if (videoRef.current) {
-          webgazer.setVideoViewerElement(videoRef.current);
-        }
         webgazer.showVideoPreview(false);
         webgazer.showPredictionPoints(false);
 
