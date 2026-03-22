@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
+import SessionIntent from "@/components/SessionIntent";
 import Dashboard from "@/components/Dashboard";
 import BreakOverlay from "@/components/BreakOverlay";
 import type { AttentionState, AttentionMetrics, GazePoint } from "@/lib/attention";
@@ -20,6 +21,7 @@ const VoiceGate = dynamic(() => import("@/components/VoiceGate"), {
 });
 
 export default function Home() {
+  const [sessionIntent, setSessionIntent] = useState<string | null>(null);
   const [tracking, setTracking] = useState(false);
   const [showMesh, setShowMesh] = useState(false);
   const [attentionState, setAttentionState] = useState<AttentionState>("focused");
@@ -46,9 +48,8 @@ export default function Home() {
     });
   }, []);
 
-  const fireIntervention = useCallback(async (level: string, metrics?: AttentionMetrics) => {
+  const fireIntervention = useCallback(async (level: string, currentMetrics?: AttentionMetrics) => {
     const now = Date.now();
-    // Debounce: don't fire more than once per 30s
     if (now - lastInterventionRef.current < 30_000) return;
     lastInterventionRef.current = now;
 
@@ -59,24 +60,23 @@ export default function Home() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "nudge",
-            target: `Attention drifting. Blink rate: ${metrics?.blinkRate.toFixed(0)}/min. Variance: ${metrics?.gazeVariance.toFixed(0)}px.`,
+            target: `Session goal: ${sessionIntent}. Attention drifting. Blink rate: ${currentMetrics?.blinkRate.toFixed(0)}/min. Variance: ${currentMetrics?.gazeVariance.toFixed(0)}px.`,
           }),
         });
       } else if (level === "force_close") {
-        // Send behavioral summary to OpenClaw
         await fetch("/api/intervene", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "openclaw_message",
-            target: `User has been glazed for 3+ minutes. Blink rate: ${metrics?.blinkRate.toFixed(0)}/min. Saccade speed: ${metrics?.saccadeSpeed.toFixed(0)}px/s. Force intervention recommended.`,
+            target: `Session goal: ${sessionIntent}. User glazed 3+ min. Blink rate: ${currentMetrics?.blinkRate.toFixed(0)}/min. Saccade: ${currentMetrics?.saccadeSpeed.toFixed(0)}px/s. Intervene.`,
           }),
         });
       }
     } catch (err) {
       console.error("Intervention failed:", err);
     }
-  }, []);
+  }, [sessionIntent]);
 
   const handleIntervention = useCallback(
     (level: "none" | "nudge" | "warning" | "force_close") => {
@@ -112,6 +112,14 @@ export default function Home() {
     [],
   );
 
+  // Session intent gate: user sets their goal before anything starts
+  if (!sessionIntent) {
+    return <SessionIntent onStart={(intent) => {
+      setSessionIntent(intent);
+      setTracking(true);
+    }} />;
+  }
+
   return (
     <main
       className={`min-h-screen ${intervention === "nudge" ? "nudge-pulse" : ""}`}
@@ -140,7 +148,7 @@ export default function Home() {
               LUNATIC EYES
             </h1>
             <p className="text-zinc-500 text-sm mt-1">
-              self-panopticon powered by openclaw
+              {sessionIntent}
             </p>
           </div>
           <div className="flex items-center gap-3">

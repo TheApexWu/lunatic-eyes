@@ -1,7 +1,11 @@
 export const IRIS_LEFT = [468, 469, 470, 471, 472];
 export const IRIS_RIGHT = [473, 474, 475, 476, 477];
-export const LEFT_EYE = [33, 133, 160, 159, 158, 144, 145, 153];
-export const RIGHT_EYE = [362, 263, 387, 386, 385, 373, 374, 380];
+// EAR order: outer, top1, top2, inner, bottom2, bottom1
+export const LEFT_EYE = [33, 160, 158, 133, 153, 144];
+export const RIGHT_EYE = [362, 385, 387, 263, 373, 380];
+// Full contour for drawing (separate from EAR computation)
+export const LEFT_EYE_CONTOUR = [33, 160, 159, 158, 133, 144, 145, 153];
+export const RIGHT_EYE_CONTOUR = [362, 385, 386, 387, 263, 373, 374, 380];
 export const FACE_OVAL = [
   10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379,
   378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127,
@@ -41,17 +45,23 @@ export function computeIrisSize(
 
   if (!leftCenter || !leftEdge || !rightCenter || !rightEdge) return 0;
 
-  const leftDiam =
-    Math.hypot(
-      (leftCenter.x - leftEdge.x) * width,
-      (leftCenter.y - leftEdge.y) * height,
-    ) * 2;
+  // Use vertical iris landmarks (top/bottom poles) for true diameter
+  const leftTop = landmarks[470];
+  const leftBot = landmarks[471];
+  const rightTop = landmarks[475];
+  const rightBot = landmarks[476];
 
-  const rightDiam =
-    Math.hypot(
-      (rightCenter.x - rightEdge.x) * width,
-      (rightCenter.y - rightEdge.y) * height,
-    ) * 2;
+  if (!leftTop || !leftBot || !rightTop || !rightBot) return 0;
+
+  const leftDiam = Math.hypot(
+    (leftTop.x - leftBot.x) * width,
+    (leftTop.y - leftBot.y) * height,
+  );
+
+  const rightDiam = Math.hypot(
+    (rightTop.x - rightBot.x) * width,
+    (rightTop.y - rightBot.y) * height,
+  );
 
   return (leftDiam + rightDiam) / 2;
 }
@@ -88,8 +98,8 @@ export function drawFaceMesh(
   ctx.closePath();
   ctx.stroke();
 
-  drawEyeOutline(ctx, landmarks, LEFT_EYE, width, height);
-  drawEyeOutline(ctx, landmarks, RIGHT_EYE, width, height);
+  drawEyeOutline(ctx, landmarks, LEFT_EYE_CONTOUR, width, height);
+  drawEyeOutline(ctx, landmarks, RIGHT_EYE_CONTOUR, width, height);
 
   ctx.fillStyle = IRIS_COLOR;
   const allIris = [...IRIS_LEFT, ...IRIS_RIGHT];

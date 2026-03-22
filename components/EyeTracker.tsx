@@ -47,21 +47,30 @@ export default function EyeTracker({
   const [cameraReady, setCameraReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Camera only initializes when user clicks START
   useEffect(() => {
+    if (!active) return;
+
     let stream: MediaStream | null = null;
 
     async function initCamera() {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480, facingMode: "user" },
-        });
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("Camera permission timeout (15s)")), 15_000)
+        );
+        stream = await Promise.race([
+          navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480, facingMode: "user" },
+          }),
+          timeoutPromise,
+        ]);
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
           setCameraReady(true);
         }
       } catch (err) {
-        setError("Camera access denied. Enable webcam permissions.");
+        setError("Camera access denied. Enable webcam permissions and reload.");
         console.error("Camera error:", err);
       }
     }
@@ -70,8 +79,9 @@ export default function EyeTracker({
 
     return () => {
       stream?.getTracks().forEach((t) => t.stop());
+      setCameraReady(false);
     };
-  }, []);
+  }, [active]);
 
   useEffect(() => {
     if (!cameraReady) return;
@@ -148,7 +158,7 @@ export default function EyeTracker({
     return () => {
       cancelled = true;
     };
-  }, [cameraReady, showMesh]);
+  }, [cameraReady]);
 
   useEffect(() => {
     if (!cameraReady || !active) return;
@@ -171,6 +181,13 @@ export default function EyeTracker({
         const webgazer = (window as any).webgazer;
         if (!webgazer) throw new Error("WebGazer not available on window");
 
+        // Use existing video element to avoid duplicate camera stream
+        if (videoRef.current) {
+          webgazer.setVideoViewerElement(videoRef.current);
+        }
+        webgazer.showVideoPreview(false);
+        webgazer.showPredictionPoints(false);
+
         webgazer
           .setGazeListener((data: any) => {
             if (cancelled || !data) return;
@@ -185,7 +202,7 @@ export default function EyeTracker({
             onGazeUpdate(point);
 
             const gazeCanvas = gazeCanvasRef.current;
-            if (gazeCanvas && showMesh) {
+            if (gazeCanvas) {
               const ctx = gazeCanvas.getContext("2d");
               if (ctx) {
                 ctx.clearRect(0, 0, gazeCanvas.width, gazeCanvas.height);
@@ -194,9 +211,6 @@ export default function EyeTracker({
             }
           })
           .begin();
-
-        webgazer.showVideoPreview(false);
-        webgazer.showPredictionPoints(false);
 
         webgazerRef.current = webgazer;
       } catch (err) {
@@ -211,7 +225,7 @@ export default function EyeTracker({
       webgazerRef.current?.end();
       webgazerRef.current = null;
     };
-  }, [cameraReady, active, onGazeUpdate, showMesh]);
+  }, [cameraReady, active, onGazeUpdate]);
 
   useEffect(() => {
     if (!active || !cameraReady) return;
@@ -313,7 +327,9 @@ export default function EyeTracker({
 
       {!cameraReady && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <p className="text-zinc-500">Requesting camera access...</p>
+          <p className="text-zinc-500">
+            {active ? "Requesting camera access..." : "Click START to begin"}
+          </p>
         </div>
       )}
     </div>

@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 interface InterventionRequest {
   action: "close_app" | "nudge" | "screenshot" | "openclaw_message";
-  target?: string; // app name or message
+  target?: string;
   metrics?: Record<string, number>;
+}
+
+function sanitize(input: string): string {
+  return input.replace(/[^a-zA-Z0-9 .,!?:;()\-'/]/g, "");
 }
 
 export async function POST(req: NextRequest) {
@@ -18,34 +22,45 @@ export async function POST(req: NextRequest) {
       if (!body.target) {
         return NextResponse.json({ error: "target required" }, { status: 400 });
       }
+      const appName = sanitize(body.target);
       try {
-        await execAsync(`peekaboo app quit "${body.target}"`);
-        return NextResponse.json({ ok: true, action: "closed", target: body.target });
+        await execFileAsync("peekaboo", ["app", "quit", appName]);
+        return NextResponse.json({ ok: true, action: "closed", target: appName });
       } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
       }
     }
 
     case "nudge": {
-      // Send a behavioral nudge through OpenClaw
-      const message = body.target || "Your attention is drifting. Refocus.";
+      const message = sanitize(body.target || "Your attention is drifting. Refocus.");
       try {
-        await execAsync(
-          `openclaw agent --message ${JSON.stringify(`Send me a notification: ${message}`)} --session agent:main:main 2>&1`
-        );
+        await execFileAsync("openclaw", [
+          "agent",
+          "--message",
+          `Send me a notification: ${message}`,
+          "--session",
+          "agent:main:main",
+        ]);
         return NextResponse.json({ ok: true, action: "nudge" });
       } catch (err: any) {
-        // Fallback: use osascript notification
-        await execAsync(
-          `osascript -e 'display notification "${message}" with title "Lunatic Eyes"'`
-        );
-        return NextResponse.json({ ok: true, action: "nudge", fallback: "osascript" });
+        try {
+          await execFileAsync("osascript", [
+            "-e",
+            `display notification "${message}" with title "Lunatic Eyes"`,
+          ]);
+          return NextResponse.json({ ok: true, action: "nudge", fallback: "osascript" });
+        } catch (fallbackErr: any) {
+          return NextResponse.json(
+            { error: "nudge failed", detail: fallbackErr.message },
+            { status: 500 },
+          );
+        }
       }
     }
 
     case "screenshot": {
       try {
-        const { stdout } = await execAsync("peekaboo image --json");
+        const { stdout } = await execFileAsync("peekaboo", ["image", "--json"]);
         return NextResponse.json({ ok: true, data: stdout });
       } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
@@ -53,12 +68,16 @@ export async function POST(req: NextRequest) {
     }
 
     case "openclaw_message": {
-      // Send behavioral summary to OpenClaw for analysis
-      const summary = body.target || "No summary provided";
+      const summary = sanitize(body.target || "No summary provided");
       try {
-        const { stdout } = await execAsync(
-          `openclaw agent --message ${JSON.stringify(summary)} --session agent:main:main --json 2>&1`
-        );
+        const { stdout } = await execFileAsync("openclaw", [
+          "agent",
+          "--message",
+          summary,
+          "--session",
+          "agent:main:main",
+          "--json",
+        ]);
         return NextResponse.json({ ok: true, response: stdout });
       } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });

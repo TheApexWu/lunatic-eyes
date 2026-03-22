@@ -18,14 +18,18 @@ export interface AttentionMetrics {
 const FIXATION_RADIUS = 50;
 const WINDOW_SIZE = 900;
 
+const WARMUP_MS = 30_000;
+
 export class AttentionEngine {
   private gazeBuffer: GazePoint[] = [];
   private blinkTimestamps: number[] = [];
   private lastIrisSize: number = 0;
   private fixationStart: number = 0;
   private fixationCenter: GazePoint | null = null;
+  private sessionStart: number = 0;
 
   addGaze(point: GazePoint) {
+    if (this.sessionStart === 0) this.sessionStart = point.timestamp;
     this.gazeBuffer.push(point);
     if (this.gazeBuffer.length > WINDOW_SIZE) {
       this.gazeBuffer.shift();
@@ -108,7 +112,14 @@ export class AttentionEngine {
     return Math.sqrt(varX + varY);
   }
 
+  isWarmedUp(): boolean {
+    return this.sessionStart > 0 && Date.now() - this.sessionStart > WARMUP_MS;
+  }
+
   classify(metrics: AttentionMetrics): AttentionState {
+    // Don't classify during warmup, default to focused
+    if (!this.isWarmedUp()) return "focused";
+
     if (
       metrics.fixationDuration > 2000 &&
       metrics.blinkRate >= 10 &&
@@ -138,5 +149,6 @@ export class AttentionEngine {
     this.blinkTimestamps = [];
     this.fixationCenter = null;
     this.fixationStart = 0;
+    this.sessionStart = 0;
   }
 }
