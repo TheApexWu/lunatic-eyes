@@ -150,6 +150,16 @@ export const DEFAULT_CALIBRATION: GazeCalibration = {
   maxRatioY: 0.75,
 };
 
+// EMA-smoothed iris ratios to dampen frame-to-frame jitter
+let _smoothedRx: number | null = null;
+let _smoothedRy: number | null = null;
+const IRIS_EMA = 0.4; // higher = more responsive, lower = smoother
+
+export function resetIrisSmoothing() {
+  _smoothedRx = null;
+  _smoothedRy = null;
+}
+
 // Extract raw iris ratios (used by both calibration and gaze estimation)
 export function getIrisRatios(
   landmarks: { x: number; y: number }[],
@@ -170,15 +180,35 @@ export function getIrisRatios(
     return null;
   }
 
-  const leftRatioX = (leftIris.x - leftOuter.x) / (leftInner.x - leftOuter.x || 0.001);
-  const rightRatioX = (rightIris.x - rightInner.x) / (rightOuter.x - rightInner.x || 0.001);
-  const leftRatioY = (leftIris.y - leftTop.y) / (leftBot.y - leftTop.y || 0.001);
-  const rightRatioY = (rightIris.y - rightTop.y) / (rightBot.y - rightTop.y || 0.001);
+  const leftW = leftInner.x - leftOuter.x;
+  const rightW = rightOuter.x - rightInner.x;
+  const leftH = leftBot.y - leftTop.y;
+  const rightH = rightBot.y - rightTop.y;
 
-  return {
-    rx: (leftRatioX + rightRatioX) / 2,
-    ry: (leftRatioY + rightRatioY) / 2,
-  };
+  // Skip if eye dimensions are too small (noise will dominate)
+  if (Math.abs(leftW) < 0.01 || Math.abs(rightW) < 0.01 ||
+      Math.abs(leftH) < 0.005 || Math.abs(rightH) < 0.005) {
+    return null;
+  }
+
+  const leftRatioX = (leftIris.x - leftOuter.x) / leftW;
+  const rightRatioX = (rightIris.x - rightInner.x) / rightW;
+  const leftRatioY = (leftIris.y - leftTop.y) / leftH;
+  const rightRatioY = (rightIris.y - rightTop.y) / rightH;
+
+  const rawRx = (leftRatioX + rightRatioX) / 2;
+  const rawRy = (leftRatioY + rightRatioY) / 2;
+
+  // EMA smooth to kill jitter
+  if (_smoothedRx === null) {
+    _smoothedRx = rawRx;
+    _smoothedRy = rawRy;
+  } else {
+    _smoothedRx += IRIS_EMA * (rawRx - _smoothedRx);
+    _smoothedRy! += IRIS_EMA * (rawRy - _smoothedRy!);
+  }
+
+  return { rx: _smoothedRx, ry: _smoothedRy! };
 }
 
 // Estimate gaze screen position from iris landmarks

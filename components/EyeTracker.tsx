@@ -25,8 +25,8 @@ interface EyeTrackerProps {
 
 const EAR_BLINK_THRESHOLD = 0.2;
 const INTERVENTION_THRESHOLDS = {
-  nudge: 15_000,
-  warning: 30_000,
+  nudge: 5_000,
+  warning: 20_000,
   force_close: 45_000,
 };
 
@@ -55,7 +55,7 @@ export default function EyeTracker({
   const blinkOpenRef = useRef(true);
   const lastGazePostRef = useRef(0);
   const smoothGazeRef = useRef<{ x: number; y: number } | null>(null);
-  const SMOOTHING = 0.15; // lower = smoother, higher = more responsive
+  const SMOOTHING = 0.35; // lower = smoother, higher = more responsive
   const calibrationRef = useRef<GazeCalibration | null>(calibration);
   const onGazeUpdateRef = useRef(onGazeUpdate);
   const onMetricsUpdateRef = useRef(onMetricsUpdate);
@@ -63,6 +63,9 @@ export default function EyeTracker({
 
   // Keep refs synced
   showMeshRef.current = showMesh;
+  if (calibrationRef.current !== calibration) {
+    smoothGazeRef.current = null; // reset smooth gaze on recalibration
+  }
   calibrationRef.current = calibration;
   onGazeUpdateRef.current = onGazeUpdate;
   onMetricsUpdateRef.current = onMetricsUpdate;

@@ -7,7 +7,7 @@ import Calibration, { type CalibrationData } from "@/components/Calibration";
 import Dashboard from "@/components/Dashboard";
 import BreakOverlay from "@/components/BreakOverlay";
 import type { AttentionState, AttentionMetrics, GazePoint } from "@/lib/attention";
-import type { GazeCalibration } from "@/lib/gaze";
+import { type GazeCalibration, resetIrisSmoothing } from "@/lib/gaze";
 
 const EyeTracker = dynamic(() => import("@/components/EyeTracker"), {
   ssr: false,
@@ -115,71 +115,39 @@ export default function Home() {
       ? `Blocking: ${sessionPolicy.block.join(", ") || "nothing"}. Allowing: ${sessionPolicy.allow.join(", ") || "everything"}. Tone: ${sessionPolicy.tone}.`
       : "";
 
-    try {
-      // All levels close blocked tabs
-      await closeBlockedApps();
+    // Close tabs IMMEDIATELY (don't wait for OpenClaw)
+    closeBlockedApps().catch(() => {});
 
-      if (level === "nudge") {
-        const res = await fetch("/api/intervene", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "openclaw_message",
-            target: `You are Lunatic Eyes, an attention monitor. The user's goal: "${sessionIntent}". ${policyCtx} Their attention is DRIFTING. ${metricsCtx} Write a single-sentence nudge (under 20 words) referencing their goal. Be direct, ${sessionPolicy?.tone || "firm"}.`,
-          }),
-        });
-        const data = await res.json();
-        if (data.response) {
-          try {
-            const parsed = JSON.parse(data.response);
-            setInterventionMessage(parsed?.message || parsed?.content || data.response);
-          } catch {
-            setInterventionMessage(data.response);
+    // Set fallback message instantly, then let OpenClaw upgrade it async
+    if (level === "nudge") setInterventionMessage("Your attention is drifting. Refocus.");
+    if (level === "warning") setInterventionMessage("Blocked tabs closed. Your eyes are glazing.");
+    if (level === "force_close") setInterventionMessage("Session paused. Take a break and refocus.");
+
+    // OpenClaw message in background (fire-and-forget, upgrades message when ready)
+    const promptMap: Record<string, string> = {
+      nudge: `You are Lunatic Eyes, an attention monitor. The user's goal: "${sessionIntent}". ${policyCtx} Their attention is DRIFTING. ${metricsCtx} Write a single-sentence nudge (under 20 words) referencing their goal. Be direct, ${sessionPolicy?.tone || "firm"}.`,
+      warning: `You are Lunatic Eyes, an attention monitor. The user's goal: "${sessionIntent}". ${policyCtx} Their attention has been DISTRACTED for 10+ seconds. Blocked tabs were just closed. ${metricsCtx} Write a single-sentence warning (under 25 words). Reference their goal and what was blocked. Be sharp, ${sessionPolicy?.tone || "firm"}.`,
+      force_close: `You are Lunatic Eyes, an attention monitor. The user's goal: "${sessionIntent}". ${policyCtx} They have been GLAZED for 15+ seconds. All blocked tabs closed. Session forcefully paused. ${metricsCtx} Write a 2-3 sentence assessment of what happened. Be direct. Reference their biometrics. End with one actionable suggestion. Tone: ${sessionPolicy?.tone || "firm"}.`,
+    };
+
+    if (promptMap[level]) {
+      fetch("/api/intervene", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "openclaw_message", target: promptMap[level] }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.response) {
+            try {
+              const parsed = JSON.parse(data.response);
+              setInterventionMessage(parsed?.message || parsed?.content || data.response);
+            } catch {
+              setInterventionMessage(data.response);
+            }
           }
-        }
-      } else if (level === "warning") {
-        const res = await fetch("/api/intervene", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "openclaw_message",
-            target: `You are Lunatic Eyes, an attention monitor. The user's goal: "${sessionIntent}". ${policyCtx} Their attention has been DISTRACTED for 10+ seconds. Blocked tabs were just closed. ${metricsCtx} Write a single-sentence warning (under 25 words). Reference their goal and what was blocked. Be sharp, ${sessionPolicy?.tone || "firm"}.`,
-          }),
-        });
-        const data = await res.json();
-        if (data.response) {
-          try {
-            const parsed = JSON.parse(data.response);
-            setInterventionMessage(parsed?.message || parsed?.content || data.response);
-          } catch {
-            setInterventionMessage(data.response);
-          }
-        }
-      } else if (level === "force_close") {
-        const res = await fetch("/api/intervene", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "openclaw_message",
-            target: `You are Lunatic Eyes, an attention monitor. The user's goal: "${sessionIntent}". ${policyCtx} They have been GLAZED for 15+ seconds. All blocked tabs closed. Session forcefully paused. ${metricsCtx} Write a 2-3 sentence assessment of what happened. Be direct. Reference their biometrics. End with one actionable suggestion. Tone: ${sessionPolicy?.tone || "firm"}.`,
-          }),
-        });
-        const data = await res.json();
-        if (data.response) {
-          try {
-            const parsed = JSON.parse(data.response);
-            setInterventionMessage(parsed?.message || parsed?.content || data.response);
-          } catch {
-            setInterventionMessage(data.response);
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Intervention failed:", err);
-      // Fallback messages if OpenClaw fails
-      if (level === "nudge") setInterventionMessage("Your attention is drifting. Refocus.");
-      if (level === "warning") setInterventionMessage("Blocked tabs closed. Your eyes are glazing.");
-      if (level === "force_close") setInterventionMessage("Session paused. Take a break and refocus.");
+        })
+        .catch(() => {}); // fallback already set above
     }
   }, [sessionIntent, sessionPolicy, closeBlockedApps]);
 
@@ -265,6 +233,7 @@ export default function Home() {
           faceMeshReady={tracking}
           getLandmarks={() => landmarksRef.current}
           onComplete={(data: CalibrationData) => {
+            resetIrisSmoothing();
             setCalibration(data);
             setCalibrating(false);
           }}

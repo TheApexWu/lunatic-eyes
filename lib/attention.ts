@@ -117,27 +117,24 @@ export class AttentionEngine {
   }
 
   classify(metrics: AttentionMetrics): AttentionState {
-    // Don't classify during warmup, default to focused
+    // Don't classify during warmup
     if (!this.isWarmedUp()) return "locked-in";
 
-    if (
-      metrics.fixationDuration > 2000 &&
-      metrics.blinkRate >= 10 &&
-      metrics.blinkRate <= 25 &&
-      metrics.gazeVariance < 100
-    ) {
-      return "locked-in";
+    // Bad states are narrow and require clear signals
+    if (metrics.blinkRate < 6 && metrics.gazeVariance < 60) {
+      return "glazed"; // screen-staring, not reading
     }
 
-    if (metrics.blinkRate < 10 && metrics.gazeVariance < 80) {
-      return "glazed";
+    if (metrics.saccadeSpeed > 1000 && metrics.gazeVariance > 500) {
+      return "distracted"; // eyes flying everywhere
     }
 
-    if (metrics.saccadeSpeed > 500 && metrics.gazeVariance > 200) {
-      return "distracted";
+    if (metrics.gazeVariance > 350 && metrics.fixationDuration < 500) {
+      return "drifting"; // can't settle anywhere
     }
 
-    return "drifting";
+    // Default: locked-in. Normal reading has saccades and variance.
+    return "locked-in";
   }
 
   getBuffer(): GazePoint[] {

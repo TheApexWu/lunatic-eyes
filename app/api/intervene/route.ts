@@ -15,6 +15,66 @@ function sanitize(input: string): string {
   return input.replace(/[^a-zA-Z0-9 .,!?:;()\-'/]/g, "");
 }
 
+// Try OpenClaw browser tab close first, fall back to AppleScript
+async function closeTabsByPattern(patterns: string[]): Promise<{ target: string; ok: boolean; method: string; error?: string }[]> {
+  const results: { target: string; ok: boolean; method: string; error?: string }[] = [];
+
+  // OpenClaw browser: close matching PAGE tabs (not service workers)
+  try {
+    const { stdout } = await execFileAsync("openclaw", ["browser", "tabs", "--json"], { timeout: 5000 });
+    const data = JSON.parse(stdout);
+    const tabs: { targetId: string; url: string; type: string }[] = data.tabs || [];
+
+    for (const tab of tabs) {
+      if (tab.type !== "page") continue;
+      const url = (tab.url || "").toLowerCase();
+      for (const pattern of patterns) {
+        if (url.includes(pattern.toLowerCase())) {
+          try {
+            await execFileAsync("openclaw", ["browser", "close", tab.targetId, "--json"], { timeout: 5000 });
+            results.push({ target: pattern, ok: true, method: "openclaw_browser" });
+          } catch (err: any) {
+            results.push({ target: pattern, ok: false, method: "openclaw_browser", error: err.message });
+          }
+          break;
+        }
+      }
+    }
+  } catch {
+    // OpenClaw browser not running, continue to AppleScript
+  }
+
+  // ALWAYS also check user's Chrome (AppleScript)
+  const conditions = patterns
+    .map(p => `URL of atab contains "${sanitize(p)}"`)
+    .join(" or ");
+  const script = `
+tell application "Google Chrome"
+  repeat with aWindow in every window
+    set tabList to every tab of aWindow
+    repeat with atab in tabList
+      try
+        if ${conditions} then
+          close atab
+        end if
+      end try
+    end repeat
+  end repeat
+end tell`;
+  try {
+    await execFileAsync("osascript", ["-e", script]);
+    for (const p of patterns) {
+      results.push({ target: p, ok: true, method: "applescript_fallback" });
+    }
+  } catch (err: any) {
+    for (const p of patterns) {
+      results.push({ target: p, ok: false, method: "applescript_fallback", error: err.message });
+    }
+  }
+
+  return results;
+}
+
 export async function POST(req: NextRequest) {
   const body: InterventionRequest = await req.json();
 
@@ -40,9 +100,8 @@ export async function POST(req: NextRequest) {
       if (!blocked.length) {
         return NextResponse.json({ ok: true, closed: [] });
       }
-      const results: { target: string; ok: boolean; method?: string; error?: string }[] = [];
 
-      // Separate URL patterns (for Chrome tab closing) from native app names
+      // Separate URL patterns from native app names
       const urlPatterns: string[] = [];
       const nativeApps: string[] = [];
       for (const item of blocked) {
@@ -53,34 +112,12 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Close Chrome tabs matching URL patterns
+      const results: { target: string; ok: boolean; method: string; error?: string }[] = [];
+
+      // Close browser tabs via OpenClaw (AppleScript fallback)
       if (urlPatterns.length > 0) {
-        const conditions = urlPatterns
-          .map(p => `URL of atab contains "${sanitize(p)}"`)
-          .join(" or ");
-        const script = `
-tell application "Google Chrome"
-  repeat with aWindow in every window
-    set tabList to every tab of aWindow
-    repeat with atab in tabList
-      try
-        if ${conditions} then
-          close atab
-        end if
-      end try
-    end repeat
-  end repeat
-end tell`;
-        try {
-          await execFileAsync("osascript", ["-e", script]);
-          for (const p of urlPatterns) {
-            results.push({ target: p, ok: true, method: "chrome_tab" });
-          }
-        } catch (err: any) {
-          for (const p of urlPatterns) {
-            results.push({ target: p, ok: false, method: "chrome_tab", error: err.message });
-          }
-        }
+        const tabResults = await closeTabsByPattern(urlPatterns);
+        results.push(...tabResults);
       }
 
       // Quit native apps
@@ -111,7 +148,7 @@ end tell`;
           "agent:main:main",
         ]);
         return NextResponse.json({ ok: true, action: "nudge" });
-      } catch (err: any) {
+      } catch {
         try {
           await execFileAsync("osascript", [
             "-e",
@@ -128,9 +165,11 @@ end tell`;
     }
 
     case "screenshot": {
+      // OpenClaw browser screenshot
       try {
-        const { stdout } = await execFileAsync("peekaboo", ["image", "--json"]);
-        return NextResponse.json({ ok: true, data: stdout });
+        const { stdout } = await execFileAsync("openclaw", ["browser", "screenshot", "--json"], { timeout: 10000 });
+        const data = JSON.parse(stdout);
+        return NextResponse.json({ ok: true, path: data.path, url: data.url });
       } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
       }
@@ -146,7 +185,7 @@ end tell`;
           "--session-id",
           "agent:main:main",
           "--json",
-        ]);
+        ], { timeout: 15000 });
         return NextResponse.json({ ok: true, response: stdout });
       } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
