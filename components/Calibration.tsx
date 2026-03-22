@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useRef } from "react";
+import { getIrisRatios } from "@/lib/gaze";
 
 export interface CalibrationData {
   minRatioX: number;
@@ -23,63 +24,37 @@ const POINTS = [
   { x: 0.9, y: 0.9, label: "BOTTOM RIGHT" },
 ];
 
-const SAMPLES_PER_POINT = 15;
-const SAMPLE_INTERVAL = 80; // ms between samples
-
-function computeIrisRatios(landmarks: { x: number; y: number }[]): { rx: number; ry: number } | null {
-  const leftOuter = landmarks[33];
-  const leftInner = landmarks[133];
-  const rightOuter = landmarks[362];
-  const rightInner = landmarks[263];
-  const leftIris = landmarks[468];
-  const rightIris = landmarks[473];
-  const leftTop = landmarks[159];
-  const leftBot = landmarks[145];
-  const rightTop = landmarks[386];
-  const rightBot = landmarks[374];
-
-  if (!leftOuter || !leftInner || !rightOuter || !rightInner ||
-      !leftIris || !rightIris || !leftTop || !leftBot || !rightTop || !rightBot) {
-    return null;
-  }
-
-  const leftRatioX = (leftIris.x - leftOuter.x) / (leftInner.x - leftOuter.x || 0.001);
-  const rightRatioX = (rightIris.x - rightInner.x) / (rightOuter.x - rightInner.x || 0.001);
-  const leftRatioY = (leftIris.y - leftTop.y) / (leftBot.y - leftTop.y || 0.001);
-  const rightRatioY = (rightIris.y - rightTop.y) / (rightBot.y - rightTop.y || 0.001);
-
-  return {
-    rx: (leftRatioX + rightRatioX) / 2,
-    ry: (leftRatioY + rightRatioY) / 2,
-  };
-}
+const SAMPLES_PER_POINT = 10;
 
 export default function Calibration({ onComplete, faceMeshReady, getLandmarks }: CalibrationProps) {
   const [pointIndex, setPointIndex] = useState(0);
   const [collecting, setCollecting] = useState(false);
-  const [countdown, setCountdown] = useState(3);
-  const [started, setStarted] = useState(false);
+  const [sampleCount, setSampleCount] = useState(0);
+  const [debugInfo, setDebugInfo] = useState("");
   const samplesRef = useRef<{ rx: number; ry: number; px: number; py: number }[]>([]);
-  const collectingRef = useRef(false);
-  const sampleCountRef = useRef(0);
 
   const currentPoint = POINTS[pointIndex];
 
-  const collectSamples = useCallback(() => {
-    if (!faceMeshReady) return;
-    collectingRef.current = true;
-    sampleCountRef.current = 0;
+  const collectBurst = () => {
+    const lm = getLandmarks();
+    if (!lm) {
+      setDebugInfo(`No landmarks (faceMeshReady=${faceMeshReady})`);
+      return;
+    }
+    if (lm.length <= 473) {
+      setDebugInfo(`Only ${lm.length} landmarks (need 474+ for iris)`);
+      return;
+    }
+
     setCollecting(true);
+    setSampleCount(0);
+    let count = 0;
 
     const interval = setInterval(() => {
-      if (!collectingRef.current) {
-        clearInterval(interval);
-        return;
-      }
       const landmarks = getLandmarks();
-      if (!landmarks) return;
+      if (!landmarks || landmarks.length <= 473) return;
 
-      const ratios = computeIrisRatios(landmarks);
+      const ratios = getIrisRatios(landmarks);
       if (!ratios) return;
 
       samplesRef.current.push({
@@ -88,12 +63,13 @@ export default function Calibration({ onComplete, faceMeshReady, getLandmarks }:
         px: currentPoint.x,
         py: currentPoint.y,
       });
-      sampleCountRef.current++;
+      count++;
+      setSampleCount(count);
 
-      if (sampleCountRef.current >= SAMPLES_PER_POINT) {
+      if (count >= SAMPLES_PER_POINT) {
         clearInterval(interval);
-        collectingRef.current = false;
         setCollecting(false);
+        setSampleCount(0);
 
         if (pointIndex < POINTS.length - 1) {
           setPointIndex(pointIndex + 1);
@@ -101,18 +77,30 @@ export default function Calibration({ onComplete, faceMeshReady, getLandmarks }:
           finalize();
         }
       }
-    }, SAMPLE_INTERVAL);
-  }, [faceMeshReady, getLandmarks, pointIndex, currentPoint]);
+    }, 60);
 
-  const finalize = useCallback(() => {
+    // Safety timeout: if stuck after 3s, force advance
+    setTimeout(() => {
+      clearInterval(interval);
+      setCollecting(false);
+      if (count < SAMPLES_PER_POINT) {
+        setDebugInfo(`Only got ${count}/${SAMPLES_PER_POINT} samples, advancing anyway`);
+        if (pointIndex < POINTS.length - 1) {
+          setPointIndex(pointIndex + 1);
+        } else {
+          finalize();
+        }
+      }
+    }, 3000);
+  };
+
+  const finalize = () => {
     const samples = samplesRef.current;
     if (samples.length < 5) {
-      // Not enough data, use defaults
       onComplete({ minRatioX: 0.3, maxRatioX: 0.7, minRatioY: 0.25, maxRatioY: 0.75 });
       return;
     }
 
-    // Group by screen region and find ratio extremes
     const leftSamples = samples.filter(s => s.px <= 0.3);
     const rightSamples = samples.filter(s => s.px >= 0.7);
     const topSamples = samples.filter(s => s.py <= 0.3);
@@ -123,15 +111,11 @@ export default function Calibration({ onComplete, faceMeshReady, getLandmarks }:
       return sorted[Math.floor(sorted.length / 2)] ?? 0.5;
     };
 
-    // When looking left on screen, iris ratio is high (looking toward inner corner)
-    // When looking right on screen, iris ratio is low (looking toward outer corner)
-    // So minRatioX corresponds to right side of screen, maxRatioX to left side
     const minRX = rightSamples.length > 0 ? median(rightSamples.map(s => s.rx)) : 0.35;
     const maxRX = leftSamples.length > 0 ? median(leftSamples.map(s => s.rx)) : 0.65;
     const minRY = topSamples.length > 0 ? median(topSamples.map(s => s.ry)) : 0.3;
     const maxRY = bottomSamples.length > 0 ? median(bottomSamples.map(s => s.ry)) : 0.7;
 
-    // Add 10% padding to extend beyond calibrated range
     const padX = (maxRX - minRX) * 0.1;
     const padY = (maxRY - minRY) * 0.1;
 
@@ -141,76 +125,48 @@ export default function Calibration({ onComplete, faceMeshReady, getLandmarks }:
       minRatioY: minRY - padY,
       maxRatioY: maxRY + padY,
     });
-  }, [onComplete]);
+  };
 
-  // Initial countdown
-  useEffect(() => {
-    if (started) return;
-    if (countdown <= 0) {
-      setStarted(true);
-      return;
-    }
-    const t = setTimeout(() => setCountdown(countdown - 1), 1000);
-    return () => clearTimeout(t);
-  }, [countdown, started]);
-
-  // Auto-collect when point changes and started. Wait for landmarks to be available.
-  useEffect(() => {
-    if (!started || collecting) return;
-    let cancelled = false;
-    const tryCollect = () => {
-      if (cancelled) return;
-      const lm = getLandmarks();
-      if (lm && lm.length > 473) {
-        collectSamples();
-      } else {
-        // FaceMesh not ready yet, retry
-        setTimeout(tryCollect, 200);
-      }
-    };
-    setTimeout(tryCollect, 500); // initial settle delay
-    return () => { cancelled = true; };
-  }, [started, pointIndex, collecting, collectSamples, getLandmarks]);
-
-  if (!started) {
-    return (
-      <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold text-crimson mb-4">CALIBRATION</h2>
-          <p className="text-zinc-400 mb-2">Look at each red dot as it appears</p>
-          <p className="text-zinc-500 text-sm mb-6">Keep your head still, move only your eyes</p>
-          <div className="text-6xl font-bold text-crimson">{countdown}</div>
-        </div>
-      </div>
-    );
-  }
+  const skip = () => {
+    onComplete({ minRatioX: 0.3, maxRatioX: 0.7, minRatioY: 0.25, maxRatioY: 0.75 });
+  };
 
   return (
     <div className="fixed inset-0 z-[100] bg-black">
-      {/* Target dot */}
+      {/* Target dot - click to collect */}
       <div
-        className="absolute transition-all duration-300"
+        className="absolute transition-all duration-300 cursor-pointer"
         style={{
           left: `${currentPoint.x * 100}%`,
           top: `${currentPoint.y * 100}%`,
           transform: "translate(-50%, -50%)",
         }}
+        onClick={collecting ? undefined : collectBurst}
       >
-        <div className={`w-8 h-8 rounded-full border-2 border-crimson flex items-center justify-center ${collecting ? "animate-pulse" : ""}`}>
-          <div className={`w-4 h-4 rounded-full ${collecting ? "bg-crimson" : "bg-crimson/50"}`} />
+        <div className={`w-10 h-10 rounded-full border-2 border-crimson flex items-center justify-center ${collecting ? "animate-pulse" : "hover:scale-125 transition-transform"}`}>
+          <div className={`w-5 h-5 rounded-full ${collecting ? "bg-crimson" : "bg-crimson/60"}`} />
         </div>
       </div>
 
       {/* Instructions */}
-      <div className="absolute bottom-8 inset-x-0 text-center">
-        <p className="text-zinc-500 text-sm uppercase tracking-wider">
+      <div className="absolute bottom-12 inset-x-0 text-center">
+        <p className="text-zinc-400 text-lg mb-1">
           {collecting
-            ? `Sampling... ${Math.min(sampleCountRef.current, SAMPLES_PER_POINT)}/${SAMPLES_PER_POINT}`
-            : `Look at the dot: ${currentPoint.label}`}
+            ? `Sampling... ${sampleCount}/${SAMPLES_PER_POINT}`
+            : "CLICK the red dot while looking at it"}
         </p>
-        <p className="text-zinc-600 text-xs mt-1">
-          {pointIndex + 1} / {POINTS.length}
+        <p className="text-zinc-600 text-sm">
+          {currentPoint.label} ({pointIndex + 1}/{POINTS.length})
         </p>
+        {debugInfo && (
+          <p className="text-yellow-500/70 text-xs mt-2">{debugInfo}</p>
+        )}
+        <button
+          onClick={skip}
+          className="mt-4 px-4 py-2 text-sm text-zinc-600 border border-zinc-800 rounded hover:border-zinc-500 hover:text-zinc-300 transition-all"
+        >
+          SKIP
+        </button>
       </div>
     </div>
   );

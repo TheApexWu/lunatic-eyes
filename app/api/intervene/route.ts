@@ -40,19 +40,63 @@ export async function POST(req: NextRequest) {
       if (!blocked.length) {
         return NextResponse.json({ ok: true, closed: [] });
       }
-      const results: { app: string; ok: boolean; error?: string }[] = [];
-      for (const app of blocked) {
+      const results: { target: string; ok: boolean; method?: string; error?: string }[] = [];
+
+      // Separate URL patterns (for Chrome tab closing) from native app names
+      const urlPatterns: string[] = [];
+      const nativeApps: string[] = [];
+      for (const item of blocked) {
+        if (item.includes(".") || item.startsWith("http")) {
+          urlPatterns.push(item);
+        } else {
+          nativeApps.push(item);
+        }
+      }
+
+      // Close Chrome tabs matching URL patterns
+      if (urlPatterns.length > 0) {
+        const conditions = urlPatterns
+          .map(p => `URL of atab contains "${sanitize(p)}"`)
+          .join(" or ");
+        const script = `
+tell application "Google Chrome"
+  repeat with aWindow in every window
+    set tabList to every tab of aWindow
+    repeat with atab in tabList
+      try
+        if ${conditions} then
+          close atab
+        end if
+      end try
+    end repeat
+  end repeat
+end tell`;
+        try {
+          await execFileAsync("osascript", ["-e", script]);
+          for (const p of urlPatterns) {
+            results.push({ target: p, ok: true, method: "chrome_tab" });
+          }
+        } catch (err: any) {
+          for (const p of urlPatterns) {
+            results.push({ target: p, ok: false, method: "chrome_tab", error: err.message });
+          }
+        }
+      }
+
+      // Quit native apps
+      for (const app of nativeApps) {
         const clean = sanitize(app);
         try {
           await execFileAsync("osascript", [
             "-e",
             `tell application "${clean}" to quit`,
           ]);
-          results.push({ app: clean, ok: true });
+          results.push({ target: clean, ok: true, method: "native_quit" });
         } catch (err: any) {
-          results.push({ app: clean, ok: false, error: err.message });
+          results.push({ target: clean, ok: false, method: "native_quit", error: err.message });
         }
       }
+
       return NextResponse.json({ ok: true, closed: results });
     }
 
@@ -63,7 +107,7 @@ export async function POST(req: NextRequest) {
           "agent",
           "--message",
           `Send me a notification: ${message}`,
-          "--session",
+          "--session-id",
           "agent:main:main",
         ]);
         return NextResponse.json({ ok: true, action: "nudge" });
@@ -99,7 +143,7 @@ export async function POST(req: NextRequest) {
           "agent",
           "--message",
           summary,
-          "--session",
+          "--session-id",
           "agent:main:main",
           "--json",
         ]);

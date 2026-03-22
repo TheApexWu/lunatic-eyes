@@ -1,4 +1,4 @@
-export type AttentionState = "focused" | "drifting" | "glazed" | "distracted";
+export type AttentionState = "locked-in" | "drifting" | "glazed" | "distracted";
 
 export interface GazePoint {
   x: number;
@@ -18,7 +18,7 @@ export interface AttentionMetrics {
 const FIXATION_RADIUS = 50;
 const WINDOW_SIZE = 900;
 
-const WARMUP_MS = 30_000;
+const WARMUP_MS = 5_000;
 
 export class AttentionEngine {
   private gazeBuffer: GazePoint[] = [];
@@ -118,7 +118,7 @@ export class AttentionEngine {
 
   classify(metrics: AttentionMetrics): AttentionState {
     // Don't classify during warmup, default to focused
-    if (!this.isWarmedUp()) return "focused";
+    if (!this.isWarmedUp()) return "locked-in";
 
     if (
       metrics.fixationDuration > 2000 &&
@@ -126,7 +126,7 @@ export class AttentionEngine {
       metrics.blinkRate <= 25 &&
       metrics.gazeVariance < 100
     ) {
-      return "focused";
+      return "locked-in";
     }
 
     if (metrics.blinkRate < 10 && metrics.gazeVariance < 80) {

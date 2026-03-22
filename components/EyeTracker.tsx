@@ -25,9 +25,9 @@ interface EyeTrackerProps {
 
 const EAR_BLINK_THRESHOLD = 0.2;
 const INTERVENTION_THRESHOLDS = {
-  nudge: 10_000,
-  warning: 20_000,
-  force_close: 30_000,
+  nudge: 5_000,
+  warning: 10_000,
+  force_close: 15_000,
 };
 
 export default function EyeTracker({
@@ -46,7 +46,7 @@ export default function EyeTracker({
   const faceMeshRef = useRef<any>(null);
   const animFrameRef = useRef<number>(0);
   const stateStartRef = useRef<{ state: AttentionState; since: number }>({
-    state: "focused",
+    state: "locked-in",
     since: Date.now(),
   });
   const [cameraReady, setCameraReady] = useState(false);
@@ -248,14 +248,12 @@ export default function EyeTracker({
 
             const duration = now - stateStartRef.current.since;
 
-            if (state === "glazed" && duration > INTERVENTION_THRESHOLDS.force_close) {
+            // Any non-locked-in state escalates through the full ladder
+            if (state !== "locked-in" && duration > INTERVENTION_THRESHOLDS.force_close) {
               onInterventionRef.current("force_close");
-            } else if (
-              (state === "distracted" || state === "glazed") &&
-              duration > INTERVENTION_THRESHOLDS.warning
-            ) {
+            } else if (state !== "locked-in" && duration > INTERVENTION_THRESHOLDS.warning) {
               onInterventionRef.current("warning");
-            } else if (state === "drifting" && duration > INTERVENTION_THRESHOLDS.nudge) {
+            } else if (state !== "locked-in" && duration > INTERVENTION_THRESHOLDS.nudge) {
               onInterventionRef.current("nudge");
             } else {
               onInterventionRef.current("none");

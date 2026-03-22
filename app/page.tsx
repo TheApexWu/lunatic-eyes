@@ -28,7 +28,7 @@ export default function Home() {
   const [tracking, setTracking] = useState(false);
   const [showMesh, setShowMesh] = useState(false);
   const [showDot, setShowDot] = useState(true);
-  const [attentionState, setAttentionState] = useState<AttentionState>("focused");
+  const [attentionState, setAttentionState] = useState<AttentionState>("locked-in");
   const [metrics, setMetrics] = useState<AttentionMetrics | null>(null);
   const [gazeHistory, setGazeHistory] = useState<GazePoint[]>([]);
   const [showBreak, setShowBreak] = useState(false);
@@ -37,6 +37,7 @@ export default function Home() {
   const [elapsed, setElapsed] = useState(0);
   const [calibration, setCalibration] = useState<GazeCalibration | null>(null);
   const [calibrating, setCalibrating] = useState(false);
+  const [stateHistory, setStateHistory] = useState<{ state: AttentionState; timestamp: number }[]>([]);
   const landmarksRef = useRef<{ x: number; y: number }[] | null>(null);
   const lastInterventionRef = useRef<number>(0);
   const sessionStartRef = useRef<number>(0);
@@ -45,6 +46,11 @@ export default function Home() {
     (newMetrics: AttentionMetrics, state: AttentionState) => {
       setMetrics(newMetrics);
       setAttentionState(state);
+      setStateHistory(prev => {
+        const entry = { state, timestamp: Date.now() };
+        if (prev.length > 0 && prev[prev.length - 1].state === state) return prev;
+        return [...prev, entry];
+      });
     },
     [],
   );
@@ -60,17 +66,18 @@ export default function Home() {
   const closeBlockedApps = useCallback(async () => {
     if (!sessionPolicy || sessionPolicy.block.length === 0) return;
     // Map policy block categories to actual macOS app names
+    // URL patterns close Chrome tabs; plain names quit native apps
     const appMap: Record<string, string[]> = {
-      twitter: ["Twitter", "X"],
-      instagram: ["Instagram"],
-      tiktok: ["TikTok"],
-      reddit: ["Reddit"],
-      facebook: ["Facebook"],
-      youtube: ["Google Chrome"], // YouTube lives in browser
-      "social media": ["Twitter", "X", "Discord", "Telegram", "WhatsApp"],
-      news: ["News"],
+      twitter: ["twitter.com", "x.com"],
+      instagram: ["instagram.com"],
+      tiktok: ["tiktok.com"],
+      reddit: ["reddit.com"],
+      facebook: ["facebook.com"],
+      youtube: ["youtube.com"],
+      "social media": ["twitter.com", "x.com", "instagram.com", "facebook.com", "tiktok.com", "reddit.com", "Discord"],
+      news: ["news.google.com", "cnn.com", "nytimes.com"],
       games: [],
-      streaming: ["Spotify", "Music"],
+      streaming: ["Spotify", "Music", "netflix.com", "twitch.tv"],
       discord: ["Discord"],
       telegram: ["Telegram"],
       whatsapp: ["WhatsApp"],
@@ -97,7 +104,7 @@ export default function Home() {
 
   const fireIntervention = useCallback(async (level: string, currentMetrics?: AttentionMetrics) => {
     const now = Date.now();
-    if (now - lastInterventionRef.current < 30_000) return;
+    if (now - lastInterventionRef.current < 3_000) return;
     lastInterventionRef.current = now;
 
     try {
@@ -106,6 +113,8 @@ export default function Home() {
         : "";
 
       if (level === "nudge") {
+        // Nudge also closes blocked tabs for immediate demo visibility
+        await closeBlockedApps();
         await fetch("/api/intervene", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -200,10 +209,16 @@ export default function Home() {
 
   // Session intent gate: user sets their goal before anything starts
   if (!sessionIntent) {
-    return <SessionIntent onStart={(intent, policy) => {
+    return <SessionIntent onStart={async (intent, policy) => {
       setSessionIntent(intent);
       setSessionPolicy(policy);
-      // Start camera + facemesh but don't track yet -- need calibration first
+      // Request camera permission BEFORE showing calibration overlay
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        stream.getTracks().forEach(t => t.stop()); // release, EyeTracker will re-request
+      } catch {
+        // permission denied - still proceed, calibration has SKIP button
+      }
       setTracking(true);
       setCalibrating(true);
     }} />;
@@ -228,6 +243,7 @@ export default function Home() {
         <BreakOverlay
           metrics={metrics}
           gazeHistory={gazeHistory}
+          sessionIntent={sessionIntent}
           onDismiss={() => {
             setShowBreak(false);
             setIntervention("none");
@@ -256,6 +272,14 @@ export default function Home() {
               onReady={() => setVoiceReady(true)}
               onCommand={handleVoiceCommand}
             />
+            <button
+              onClick={() => {
+                setCalibrating(true);
+              }}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-zinc-900 text-zinc-400 border border-zinc-700 hover:border-crimson"
+            >
+              RECALIBRATE
+            </button>
             <button
               onClick={() => {
                 const next = !showDot;
@@ -326,7 +350,7 @@ export default function Home() {
               </h3>
               <div
                 className={`text-2xl font-bold ${
-                  attentionState === "focused"
+                  attentionState === "locked-in"
                     ? "text-green-400"
                     : attentionState === "drifting"
                       ? "text-yellow-400"
@@ -409,6 +433,7 @@ export default function Home() {
             gazeHistory={gazeHistory}
             metrics={metrics}
             attentionState={attentionState}
+            stateHistory={stateHistory}
           />
         </div>
       </div>

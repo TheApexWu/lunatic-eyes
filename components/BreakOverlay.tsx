@@ -5,17 +5,36 @@ import type { AttentionMetrics, GazePoint } from "@/lib/attention";
 interface BreakOverlayProps {
   metrics: AttentionMetrics | null;
   gazeHistory: GazePoint[];
+  sessionIntent?: string | null;
   onDismiss: () => void;
 }
 
 export default function BreakOverlay({
   metrics,
   gazeHistory,
+  sessionIntent,
   onDismiss,
 }: BreakOverlayProps) {
   const sessionDuration = gazeHistory.length > 0
-    ? ((gazeHistory[gazeHistory.length - 1].timestamp - gazeHistory[0].timestamp) / 1000).toFixed(0)
-    : "0";
+    ? Math.round((gazeHistory[gazeHistory.length - 1].timestamp - gazeHistory[0].timestamp) / 1000)
+    : 0;
+
+  const minutes = Math.floor(sessionDuration / 60);
+  const seconds = sessionDuration % 60;
+
+  // Compute a quick assessment
+  let diagnosis = "Your gaze pattern indicates sustained inattention.";
+  if (metrics) {
+    if (metrics.blinkRate < 10) {
+      diagnosis = "Screen glazing detected. Your blink rate dropped well below normal, indicating passive screen staring without cognitive engagement.";
+    } else if (metrics.gazeVariance > 200) {
+      diagnosis = "Rapid context-switching detected. Your eyes were jumping across the screen without settling, a pattern consistent with distracted browsing.";
+    } else if (metrics.saccadeSpeed > 500) {
+      diagnosis = "Scanning behavior detected. High-speed eye movement without fixation suggests you were searching rather than reading.";
+    } else if (metrics.blinkRate > 30) {
+      diagnosis = "Elevated blink rate suggests fatigue or stress. Your eyes need rest.";
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center">
@@ -27,39 +46,54 @@ export default function BreakOverlay({
         </div>
 
         <h1 className="text-4xl font-bold text-crimson tracking-tight">
-          BREAK
+          THE EYE INTERVENED
         </h1>
 
-        <p className="text-zinc-400 text-lg">
-          Your attention drifted for too long. Take a moment.
+        {sessionIntent && (
+          <p className="text-zinc-500 text-sm">
+            Your goal: &quot;{sessionIntent}&quot;
+          </p>
+        )}
+
+        <p className="text-zinc-300 text-base leading-relaxed">
+          {diagnosis}
         </p>
 
         {metrics && (
-          <div className="grid grid-cols-2 gap-4 text-left">
-            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
+          <div className="grid grid-cols-2 gap-3 text-left">
+            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3">
               <div className="text-xs text-zinc-500 uppercase">Session</div>
-              <div className="text-xl font-bold text-zinc-200">{sessionDuration}s</div>
+              <div className="text-xl font-bold text-zinc-200">
+                {minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`}
+              </div>
             </div>
-            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
+            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3">
               <div className="text-xs text-zinc-500 uppercase">Blink Rate</div>
               <div className="text-xl font-bold text-zinc-200">
                 {metrics.blinkRate.toFixed(0)}/min
               </div>
+              <div className="text-xs text-zinc-600">normal: 15-20</div>
             </div>
-            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
-              <div className="text-xs text-zinc-500 uppercase">Gaze Points</div>
+            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3">
+              <div className="text-xs text-zinc-500 uppercase">Gaze Variance</div>
               <div className="text-xl font-bold text-zinc-200">
-                {gazeHistory.length}
+                {metrics.gazeVariance.toFixed(0)}px
               </div>
+              <div className="text-xs text-zinc-600">lower = focused</div>
             </div>
-            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
+            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-3">
               <div className="text-xs text-zinc-500 uppercase">Saccade Speed</div>
               <div className="text-xl font-bold text-zinc-200">
                 {metrics.saccadeSpeed.toFixed(0)}px/s
               </div>
+              <div className="text-xs text-zinc-600">normal: 50-300</div>
             </div>
           </div>
         )}
+
+        <div className="text-zinc-600 text-xs">
+          Blocked apps have been closed. Take 20 seconds.
+        </div>
 
         <button
           onClick={onDismiss}
