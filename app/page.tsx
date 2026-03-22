@@ -52,6 +52,44 @@ export default function Home() {
     });
   }, []);
 
+  const closeBlockedApps = useCallback(async () => {
+    if (!sessionPolicy || sessionPolicy.block.length === 0) return;
+    // Map policy block categories to actual macOS app names
+    const appMap: Record<string, string[]> = {
+      twitter: ["Twitter", "X"],
+      instagram: ["Instagram"],
+      tiktok: ["TikTok"],
+      reddit: ["Reddit"],
+      facebook: ["Facebook"],
+      youtube: ["Google Chrome"], // YouTube lives in browser
+      "social media": ["Twitter", "X", "Discord", "Telegram", "WhatsApp"],
+      news: ["News"],
+      games: [],
+      streaming: ["Spotify", "Music"],
+      discord: ["Discord"],
+      telegram: ["Telegram"],
+      whatsapp: ["WhatsApp"],
+    };
+    const appsToClose = new Set<string>();
+    for (const category of sessionPolicy.block) {
+      const apps = appMap[category.toLowerCase()] || [category];
+      apps.forEach((a) => appsToClose.add(a));
+    }
+    if (appsToClose.size === 0) return;
+    try {
+      await fetch("/api/intervene", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "close_blocked",
+          blocked: Array.from(appsToClose),
+        }),
+      });
+    } catch (err) {
+      console.error("Failed to close blocked apps:", err);
+    }
+  }, [sessionPolicy]);
+
   const fireIntervention = useCallback(async (level: string, currentMetrics?: AttentionMetrics) => {
     const now = Date.now();
     if (now - lastInterventionRef.current < 30_000) return;
@@ -71,31 +109,48 @@ export default function Home() {
             target: `Goal: ${sessionIntent}. ${policyCtx} Attention drifting. Blink rate: ${currentMetrics?.blinkRate.toFixed(0)}/min. Variance: ${currentMetrics?.gazeVariance.toFixed(0)}px.`,
           }),
         });
+      } else if (level === "warning") {
+        // Warning level: close blocked apps + send nudge
+        await closeBlockedApps();
+        await fetch("/api/intervene", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "nudge",
+            target: `Goal: ${sessionIntent}. ${policyCtx} Attention distracted 2+ min. Blocked apps closed. Blink rate: ${currentMetrics?.blinkRate.toFixed(0)}/min.`,
+          }),
+        });
       } else if (level === "force_close") {
+        // Force close: close blocked apps + escalate to OpenClaw
+        await closeBlockedApps();
         await fetch("/api/intervene", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "openclaw_message",
-            target: `Goal: ${sessionIntent}. ${policyCtx} User glazed 3+ min. Blink rate: ${currentMetrics?.blinkRate.toFixed(0)}/min. Saccade: ${currentMetrics?.saccadeSpeed.toFixed(0)}px/s. Intervene.`,
+            target: `Goal: ${sessionIntent}. ${policyCtx} User glazed 3+ min. Blocked apps closed. Blink rate: ${currentMetrics?.blinkRate.toFixed(0)}/min. Saccade: ${currentMetrics?.saccadeSpeed.toFixed(0)}px/s. Force break.`,
           }),
         });
       }
     } catch (err) {
       console.error("Intervention failed:", err);
     }
-  }, [sessionIntent, sessionPolicy]);
+  }, [sessionIntent, sessionPolicy, closeBlockedApps]);
 
   const handleIntervention = useCallback(
     (level: "none" | "nudge" | "warning" | "force_close") => {
       setIntervention(level);
 
-      if (level === "nudge" || level === "warning") {
-        fireIntervention(level, metrics ?? undefined);
+      if (level === "nudge") {
+        fireIntervention("nudge", metrics ?? undefined);
+      }
+
+      if (level === "warning") {
+        fireIntervention("warning", metrics ?? undefined);
       }
 
       if (level === "force_close") {
-        fireIntervention(level, metrics ?? undefined);
+        fireIntervention("force_close", metrics ?? undefined);
         setShowBreak(true);
         setTracking(false);
       }

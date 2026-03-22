@@ -5,8 +5,9 @@ import { promisify } from "util";
 const execFileAsync = promisify(execFile);
 
 interface InterventionRequest {
-  action: "close_app" | "nudge" | "screenshot" | "openclaw_message";
+  action: "close_app" | "close_blocked" | "nudge" | "screenshot" | "openclaw_message";
   target?: string;
+  blocked?: string[];
   metrics?: Record<string, number>;
 }
 
@@ -24,11 +25,35 @@ export async function POST(req: NextRequest) {
       }
       const appName = sanitize(body.target);
       try {
-        await execFileAsync("peekaboo", ["app", "quit", appName]);
+        await execFileAsync("osascript", [
+          "-e",
+          `tell application "${appName}" to quit`,
+        ]);
         return NextResponse.json({ ok: true, action: "closed", target: appName });
       } catch (err: any) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        return NextResponse.json({ error: err.message, target: appName }, { status: 500 });
       }
+    }
+
+    case "close_blocked": {
+      const blocked: string[] = body.blocked || [];
+      if (!blocked.length) {
+        return NextResponse.json({ ok: true, closed: [] });
+      }
+      const results: { app: string; ok: boolean; error?: string }[] = [];
+      for (const app of blocked) {
+        const clean = sanitize(app);
+        try {
+          await execFileAsync("osascript", [
+            "-e",
+            `tell application "${clean}" to quit`,
+          ]);
+          results.push({ app: clean, ok: true });
+        } catch (err: any) {
+          results.push({ app: clean, ok: false, error: err.message });
+        }
+      }
+      return NextResponse.json({ ok: true, closed: results });
     }
 
     case "nudge": {
