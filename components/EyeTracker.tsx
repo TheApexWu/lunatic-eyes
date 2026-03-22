@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useRef, useEffect, useState } from "react";
 import {
   drawFaceMesh,
   drawGazeDot,
   computeEAR,
   computeIrisSize,
+  estimateGaze,
   LEFT_EYE,
   RIGHT_EYE,
 } from "@/lib/gaze";
@@ -38,7 +39,6 @@ export default function EyeTracker({
   const gazeCanvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<AttentionEngine>(new AttentionEngine());
   const faceMeshRef = useRef<any>(null);
-  const webgazerRef = useRef<any>(null);
   const animFrameRef = useRef<number>(0);
   const stateStartRef = useRef<{ state: AttentionState; since: number }>({
     state: "focused",
@@ -47,11 +47,18 @@ export default function EyeTracker({
   const [cameraReady, setCameraReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const showMeshRef = useRef(showMesh);
-  const blinkOpenRef = useRef(true); // true = eyes open, for edge detection
+  const blinkOpenRef = useRef(true);
+  const onGazeUpdateRef = useRef(onGazeUpdate);
+  const onMetricsUpdateRef = useRef(onMetricsUpdate);
+  const onInterventionRef = useRef(onIntervention);
 
+  // Keep refs synced
   showMeshRef.current = showMesh;
+  onGazeUpdateRef.current = onGazeUpdate;
+  onMetricsUpdateRef.current = onMetricsUpdate;
+  onInterventionRef.current = onIntervention;
 
-  // Camera only initializes when user clicks START
+  // Camera init -- gated behind START
   useEffect(() => {
     if (!active) return;
 
@@ -77,7 +84,7 @@ export default function EyeTracker({
         try {
           await videoRef.current.play();
         } catch {
-          // play() interrupted by unmount, safe to ignore
+          // play() interrupted by unmount
         }
         if (!cancelled) setCameraReady(true);
       } catch (err: any) {
@@ -97,10 +104,13 @@ export default function EyeTracker({
     };
   }, [active]);
 
+  // MediaPipe FaceMesh init
   useEffect(() => {
     if (!cameraReady) return;
 
     let cancelled = false;
+    let lastMetricsTime = 0;
+    const METRICS_INTERVAL = 1000;
 
     async function initFaceMesh() {
       try {
@@ -141,18 +151,18 @@ export default function EyeTracker({
           const ctx = canvas.getContext("2d");
           if (!ctx) return;
 
-          // Always compute metrics, only draw if showMesh is on
+          // Draw mesh if toggled on
           if (showMeshRef.current) {
             drawFaceMesh(ctx, landmarks, canvas.width, canvas.height);
           } else {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
           }
 
+          // Blink detection with edge detection
           const leftEAR = computeEAR(landmarks, LEFT_EYE);
           const rightEAR = computeEAR(landmarks, RIGHT_EYE);
           const avgEAR = (leftEAR + rightEAR) / 2;
 
-          // Edge detection: only count blink on open->closed transition
           if (avgEAR < EAR_BLINK_THRESHOLD) {
             if (blinkOpenRef.current) {
               engineRef.current.addBlink(Date.now());
@@ -162,8 +172,62 @@ export default function EyeTracker({
             blinkOpenRef.current = true;
           }
 
+          // Iris size
           const irisSize = computeIrisSize(landmarks, canvas.width, canvas.height);
           engineRef.current.setIrisSize(irisSize);
+
+          // Gaze estimation from iris position
+          const screenW = typeof window !== "undefined" ? window.innerWidth : 1920;
+          const screenH = typeof window !== "undefined" ? window.innerHeight : 1080;
+          const gaze = estimateGaze(landmarks, screenW, screenH);
+
+          if (gaze) {
+            const point: GazePoint = {
+              x: gaze.x,
+              y: gaze.y,
+              timestamp: Date.now(),
+            };
+            engineRef.current.addGaze(point);
+            onGazeUpdateRef.current(point);
+
+            // Draw gaze dot on screen overlay
+            const gazeCanvas = gazeCanvasRef.current;
+            if (gazeCanvas) {
+              const gctx = gazeCanvas.getContext("2d");
+              if (gctx) {
+                gctx.clearRect(0, 0, gazeCanvas.width, gazeCanvas.height);
+                drawGazeDot(gctx, gaze.x, gaze.y);
+              }
+            }
+          }
+
+          // Compute metrics every second
+          const now = Date.now();
+          if (now - lastMetricsTime > METRICS_INTERVAL) {
+            lastMetricsTime = now;
+            const metrics = engineRef.current.compute();
+            const state = engineRef.current.classify(metrics);
+            onMetricsUpdateRef.current(metrics, state);
+
+            if (state !== stateStartRef.current.state) {
+              stateStartRef.current = { state, since: now };
+            }
+
+            const duration = now - stateStartRef.current.since;
+
+            if (state === "glazed" && duration > INTERVENTION_THRESHOLDS.force_close) {
+              onInterventionRef.current("force_close");
+            } else if (
+              (state === "distracted" || state === "glazed") &&
+              duration > INTERVENTION_THRESHOLDS.warning
+            ) {
+              onInterventionRef.current("warning");
+            } else if (state === "drifting" && duration > INTERVENTION_THRESHOLDS.nudge) {
+              onInterventionRef.current("nudge");
+            } else {
+              onInterventionRef.current("none");
+            }
+          }
         });
 
         faceMeshRef.current = faceMesh;
@@ -180,74 +244,9 @@ export default function EyeTracker({
     };
   }, [cameraReady]);
 
-  useEffect(() => {
-    if (!cameraReady || !active) return;
-
-    let cancelled = false;
-
-    async function initWebGazer() {
-      try {
-        if (!(window as any).webgazer) {
-          await new Promise<void>((resolve, reject) => {
-            const script = document.createElement("script");
-            script.src =
-              "https://webgazer.cs.brown.edu/webgazer.js";
-            script.onload = () => resolve();
-            script.onerror = () => reject(new Error("WebGazer CDN load failed"));
-            document.head.appendChild(script);
-          });
-        }
-
-        const webgazer = (window as any).webgazer;
-        if (!webgazer) throw new Error("WebGazer not available on window");
-
-        webgazer.showVideoPreview(false);
-        webgazer.showPredictionPoints(false);
-
-        webgazer
-          .setGazeListener((data: any) => {
-            if (cancelled || !data) return;
-
-            const point: GazePoint = {
-              x: data.x,
-              y: data.y,
-              timestamp: Date.now(),
-            };
-
-            engineRef.current.addGaze(point);
-            onGazeUpdate(point);
-
-            const gazeCanvas = gazeCanvasRef.current;
-            if (gazeCanvas) {
-              const ctx = gazeCanvas.getContext("2d");
-              if (ctx) {
-                ctx.clearRect(0, 0, gazeCanvas.width, gazeCanvas.height);
-                drawGazeDot(ctx, data.x, data.y);
-              }
-            }
-          })
-          .begin();
-
-        webgazerRef.current = webgazer;
-      } catch (err) {
-        console.error("WebGazer init error:", err);
-      }
-    }
-
-    initWebGazer();
-
-    return () => {
-      cancelled = true;
-      webgazerRef.current?.end();
-      webgazerRef.current = null;
-    };
-  }, [cameraReady, active, onGazeUpdate]);
-
+  // Animation loop -- sends video frames to FaceMesh
   useEffect(() => {
     if (!active || !cameraReady) return;
-
-    let lastMetricsTime = 0;
-    const METRICS_INTERVAL = 1000;
 
     const loop = async () => {
       const video = videoRef.current;
@@ -255,33 +254,6 @@ export default function EyeTracker({
 
       if (video && faceMesh && video.readyState >= 2) {
         await faceMesh.send({ image: video });
-      }
-
-      const now = Date.now();
-      if (now - lastMetricsTime > METRICS_INTERVAL) {
-        lastMetricsTime = now;
-        const metrics = engineRef.current.compute();
-        const state = engineRef.current.classify(metrics);
-        onMetricsUpdate(metrics, state);
-
-        if (state !== stateStartRef.current.state) {
-          stateStartRef.current = { state, since: now };
-        }
-
-        const duration = now - stateStartRef.current.since;
-
-        if (state === "glazed" && duration > INTERVENTION_THRESHOLDS.force_close) {
-          onIntervention("force_close");
-        } else if (
-          (state === "distracted" || state === "glazed") &&
-          duration > INTERVENTION_THRESHOLDS.warning
-        ) {
-          onIntervention("warning");
-        } else if (state === "drifting" && duration > INTERVENTION_THRESHOLDS.nudge) {
-          onIntervention("nudge");
-        } else {
-          onIntervention("none");
-        }
       }
 
       animFrameRef.current = requestAnimationFrame(loop);
@@ -292,7 +264,7 @@ export default function EyeTracker({
     return () => {
       cancelAnimationFrame(animFrameRef.current);
     };
-  }, [active, cameraReady, onMetricsUpdate, onIntervention]);
+  }, [active, cameraReady]);
 
   if (error) {
     return (
@@ -321,6 +293,7 @@ export default function EyeTracker({
         style={{ transform: "scaleX(-1)", display: showMesh ? "block" : "none" }}
       />
 
+      {/* Full-screen gaze dot overlay -- always visible */}
       <canvas
         ref={gazeCanvasRef}
         width={typeof window !== "undefined" ? window.innerWidth : 1920}

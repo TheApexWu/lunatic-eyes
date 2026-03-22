@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import SessionIntent, { type SessionPolicy } from "@/components/SessionIntent";
 import Dashboard from "@/components/Dashboard";
@@ -31,7 +31,9 @@ export default function Home() {
   const [showBreak, setShowBreak] = useState(false);
   const [intervention, setIntervention] = useState<"none" | "nudge" | "warning" | "force_close">("none");
   const [voiceReady, setVoiceReady] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const lastInterventionRef = useRef<number>(0);
+  const sessionStartRef = useRef<number>(0);
 
   const handleMetricsUpdate = useCallback(
     (newMetrics: AttentionMetrics, state: AttentionState) => {
@@ -117,6 +119,24 @@ export default function Home() {
     [],
   );
 
+  // Session timer
+  useEffect(() => {
+    if (!tracking) return;
+    if (sessionStartRef.current === 0) sessionStartRef.current = Date.now();
+
+    const interval = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - sessionStartRef.current) / 1000));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [tracking]);
+
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+  };
+
   // Session intent gate: user sets their goal before anything starts
   if (!sessionIntent) {
     return <SessionIntent onStart={(intent, policy) => {
@@ -197,6 +217,15 @@ export default function Home() {
           </div>
 
           <div className="space-y-4">
+            <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
+              <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-2">
+                Session Time
+              </h3>
+              <div className="text-3xl font-bold text-zinc-100 font-mono tracking-wider">
+                {formatTime(elapsed)}
+              </div>
+            </div>
+
             <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
               <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-3">
                 Attention State
