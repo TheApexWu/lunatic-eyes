@@ -44,27 +44,24 @@ MediaPipe Face Mesh (CDN, 478 landmarks + 10 iris)
   +---> Attention Engine (client-side, 1s intervals)
   |       |
   |       +---> Fixation duration (50px radius)
-  |       +---> Blink detection (EAR threshold 0.2, edge-triggered)
-  |       +---> Saccade speed (px/s, windowed average)
+  |       +---> Blink detection (EAR threshold 0.25, edge-triggered)
+  |       +---> Saccade amplitude (px, distance between fixations)
   |       +---> Gaze variance (std of x/y positions)
-  |       +---> Iris size (pupil dilation proxy)
+  |       +---> Head pose (yaw/pitch from landmark geometry)
   |       |
-  |       +---> State classifier -> LOCKED-IN | DRIFTING | GLAZED | DISTRACTED
+  |       +---> State classifier -> LOCKED-IN | DRIFTING | GLAZED | AWAY
   |
   v
-Intervention Pipeline
+Intervention Pipeline (graduated)
   |
-  +---> close_blocked: AppleScript closes Chrome tabs by URL pattern
-  |       (twitter.com, x.com, reddit.com, instagram.com, youtube.com, etc.)
-  |
-  +---> nudge: OpenClaw notification (fallback: osascript display notification)
-  |
-  +---> force_close: break overlay + session assessment
+  +---> 10s: Nudge (grayscale drain + vignette + AI toast)
+  +---> 30s: Warning (full grayscale + blur + tab closing + banner)
+  +---> 60s: Force close (break overlay + 4-7-8 breathing + assessment)
   |
   v
 Dashboard (Recharts)
-  Focus Score, Focus Ratio, Peak Streak, Distraction Count
-  Gaze heatmap, variance/saccade/focus timelines, behavioral assessment
+  Focus Score, sub-scores, gaze heatmap, timelines
+  Session stats, behavioral assessment, data export (JSON/CSV)
 ```
 
 ## Session Intent Pipeline
@@ -104,7 +101,12 @@ components/
 
 lib/
   attention.ts               AttentionEngine class. Metrics computation + state classifier.
-  gaze.ts                    Iris ratios, EAR blink detection, gaze estimation, calibration.
+  gaze.ts                    GazeTracker, 1-Euro filter, iris ratios, EAR, head pose, calibration.
+  export.ts                  Session data export (JSON + CSV). Summary statistics.
+
+docs/
+  TECHNICAL.md               Technical documentation for researchers.
+  FRANCO-PREP.md             Meeting prep notes.
 
 overlay/
   GazeOverlay.swift          Native macOS transparent window. Crimson dot follows gaze.
@@ -149,6 +151,16 @@ npm run dev -- --webpack
 - Webcam gaze validation: Papoutsaki et al. 2016, Semmelmann & Weigelt 2018
 - EAR blink detection: Soukupova & Cech 2016
 - ~130px webcam gaze accuracy, sufficient for quadrant-level attention classification
+
+## For Researchers
+
+Lunatic Eyes can be used as a low-cost attention tracking instrument for naturalistic studies. See [`docs/TECHNICAL.md`](docs/TECHNICAL.md) for system architecture, gaze estimation method, attention classification details, known limitations, and comparison to research-grade eye trackers.
+
+**Data export:** The dashboard includes JSON and CSV export buttons. Exported data includes timestamped gaze coordinates, attention state history, all computed metrics (focus score, gaze stability, engagement depth, screen presence, alertness), and session summary statistics (focus ratio, state transitions, intervention counts, longest focus streak).
+
+**Calibration quality:** After calibration, the system displays a quality indicator (Good/Fair/Poor) based on within-point consistency and range coverage. Poor calibration warns the researcher to check webcam angle and lighting.
+
+**Validated metrics:** All metrics are normalized 0-100 using personal baselines that adapt over a 60-second rolling window. The four attention states (LOCKED-IN, DRIFTING, GLAZED, AWAY) use debounced classification with baseline-relative thresholds.
 
 ## Privacy
 

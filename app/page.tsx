@@ -38,7 +38,9 @@ export default function Home() {
   const [elapsed, setElapsed] = useState(0);
   const [calibration, setCalibration] = useState<GazeCalibration | null>(null);
   const [calibrating, setCalibrating] = useState(false);
+  const [calibrationQuality, setCalibrationQuality] = useState<"good" | "fair" | "poor" | null>(null);
   const [stateHistory, setStateHistory] = useState<{ state: AttentionState; timestamp: number }[]>([]);
+  const [interventionCounts, setInterventionCounts] = useState<{ nudge: number; warning: number; force_close: number }>({ nudge: 0, warning: 0, force_close: 0 });
   const landmarksRef = useRef<{ x: number; y: number }[] | null>(null);
   const lastInterventionRef = useRef<number>(0);
   const sessionStartRef = useRef<number>(0);
@@ -156,14 +158,17 @@ export default function Home() {
 
       if (level === "nudge") {
         fireIntervention("nudge", metrics ?? undefined);
+        setInterventionCounts(prev => ({ ...prev, nudge: prev.nudge + 1 }));
       }
 
       if (level === "warning") {
         fireIntervention("warning", metrics ?? undefined);
+        setInterventionCounts(prev => ({ ...prev, warning: prev.warning + 1 }));
       }
 
       if (level === "force_close") {
         fireIntervention("force_close", metrics ?? undefined);
+        setInterventionCounts(prev => ({ ...prev, force_close: prev.force_close + 1 }));
         setShowBreak(true);
         setTracking(false);
       }
@@ -267,6 +272,7 @@ export default function Home() {
             resetIrisSmoothing();
             setCalibration(data);
             setCalibrating(false);
+            if (data.quality) setCalibrationQuality(data.quality);
           }}
         />
       )}
@@ -388,6 +394,30 @@ export default function Home() {
               </div>
             </div>
 
+            {calibrationQuality && (
+              <div className={`bg-zinc-950 border rounded-xl p-4 ${
+                calibrationQuality === "good" ? "border-green-500/30" :
+                calibrationQuality === "fair" ? "border-yellow-500/30" :
+                "border-crimson/30"
+              }`}>
+                <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-1">
+                  Calibration
+                </h3>
+                <div className={`text-lg font-bold ${
+                  calibrationQuality === "good" ? "text-green-400" :
+                  calibrationQuality === "fair" ? "text-yellow-400" :
+                  "text-crimson"
+                }`}>
+                  {calibrationQuality.toUpperCase()}
+                </div>
+                {calibrationQuality === "poor" && (
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Try recalibrating. Check webcam angle and lighting.
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Focus score hero card */}
             {metrics && (
               <div className={`bg-zinc-950 border rounded-xl p-4 ${
@@ -503,6 +533,7 @@ export default function Home() {
             metrics={metrics}
             attentionState={attentionState}
             stateHistory={stateHistory}
+            interventionCounts={interventionCounts}
           />
         </div>
       </div>

@@ -8,6 +8,8 @@ export interface CalibrationData {
   maxRatioX: number;
   minRatioY: number;
   maxRatioY: number;
+  quality?: "good" | "fair" | "poor";
+  residualError?: number;
 }
 
 interface CalibrationProps {
@@ -114,11 +116,48 @@ export default function Calibration({ onComplete, faceMeshReady, getLandmarks }:
     const padX = (maxRX - minRX) * 0.15;
     const padY = (maxRY - minRY) * 0.15;
 
+    // Compute calibration quality: measure within-point consistency
+    // Group samples by calibration point, compute mean spread within each group
+    const pointGroups: Record<string, { rx: number; ry: number }[]> = {};
+    for (const s of samples) {
+      const key = `${s.px},${s.py}`;
+      if (!pointGroups[key]) pointGroups[key] = [];
+      pointGroups[key].push({ rx: s.rx, ry: s.ry });
+    }
+
+    let totalSpread = 0;
+    let groupCount = 0;
+    for (const group of Object.values(pointGroups)) {
+      if (group.length < 2) continue;
+      const mRx = group.reduce((s, g) => s + g.rx, 0) / group.length;
+      const mRy = group.reduce((s, g) => s + g.ry, 0) / group.length;
+      const spread = Math.sqrt(
+        group.reduce((s, g) => s + (g.rx - mRx) ** 2 + (g.ry - mRy) ** 2, 0) / group.length
+      );
+      totalSpread += spread;
+      groupCount++;
+    }
+
+    const residualError = groupCount > 0 ? totalSpread / groupCount : 0;
+    // Also check range coverage: small range = poor separation between points
+    const rangeX = maxRX - minRX;
+    const rangeY = maxRY - minRY;
+    const rangeCoverage = Math.min(rangeX, rangeY);
+
+    let quality: "good" | "fair" | "poor" = "good";
+    if (residualError > 0.04 || rangeCoverage < 0.05) {
+      quality = "poor";
+    } else if (residualError > 0.02 || rangeCoverage < 0.1) {
+      quality = "fair";
+    }
+
     onComplete({
       minRatioX: minRX - padX,
       maxRatioX: maxRX + padX,
       minRatioY: minRY - padY,
       maxRatioY: maxRY + padY,
+      quality,
+      residualError,
     });
   };
 

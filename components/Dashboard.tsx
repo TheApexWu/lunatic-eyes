@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
 import {
   XAxis,
   YAxis,
@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import GazeHeatmap from "./GazeHeatmap";
 import type { AttentionMetrics, AttentionState, GazePoint } from "@/lib/attention";
+import { buildSessionExport, exportJSON, exportCSV, downloadFile } from "@/lib/export";
 
 interface StateEntry {
   state: AttentionState;
@@ -23,6 +24,7 @@ interface DashboardProps {
   metrics: AttentionMetrics | null;
   attentionState: AttentionState;
   stateHistory?: StateEntry[];
+  interventionCounts?: { nudge: number; warning: number; force_close: number };
 }
 
 // Sub-score progress bar component
@@ -147,12 +149,27 @@ export default function Dashboard({
   metrics,
   attentionState,
   stateHistory = [],
+  interventionCounts = { nudge: 0, warning: 0, force_close: 0 },
 }: DashboardProps) {
   const stateStats = useMemo(() => computeStateStats(stateHistory), [stateHistory]);
   const assessment = useMemo(
     () => generateAssessment(metrics, stateStats),
     [metrics, stateStats],
   );
+
+  const handleExportJSON = useCallback(() => {
+    const data = buildSessionExport(gazeHistory, stateHistory, metrics, interventionCounts);
+    const json = exportJSON(data);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    downloadFile(json, `lunatic-eyes-session-${timestamp}.json`, "application/json");
+  }, [gazeHistory, stateHistory, metrics, interventionCounts]);
+
+  const handleExportCSV = useCallback(() => {
+    const data = buildSessionExport(gazeHistory, stateHistory, metrics, interventionCounts);
+    const csv = exportCSV(data);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    downloadFile(csv, `lunatic-eyes-session-${timestamp}.csv`, "text/csv");
+  }, [gazeHistory, stateHistory, metrics, interventionCounts]);
 
   // Timeline data: focus score over time from metrics history
   const timelineData = useMemo(() => {
@@ -228,7 +245,23 @@ export default function Dashboard({
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-bold text-zinc-200">Attention Dashboard</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-zinc-200">Attention Dashboard</h2>
+        <div className="flex gap-2">
+          <button
+            onClick={handleExportJSON}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 text-zinc-400 border border-zinc-700 hover:border-crimson transition-colors"
+          >
+            Export JSON
+          </button>
+          <button
+            onClick={handleExportCSV}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 text-zinc-400 border border-zinc-700 hover:border-crimson transition-colors"
+          >
+            Export CSV
+          </button>
+        </div>
+      </div>
 
       {/* LAYER 1: Hero focus score + key stats */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -400,7 +433,7 @@ export default function Dashboard({
 
       {/* Session stats footer */}
       {stateStats && (
-        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-3">
           <div className="grid grid-cols-3 gap-4 text-center text-sm">
             <div>
               <div className="text-zinc-500 text-xs uppercase">Focus Ratio</div>
@@ -415,6 +448,22 @@ export default function Dashboard({
               <div className="text-zinc-200 font-bold">{Math.round(stateStats.totalDuration / 60)}m</div>
             </div>
           </div>
+          {(interventionCounts.nudge > 0 || interventionCounts.warning > 0 || interventionCounts.force_close > 0) && (
+            <div className="grid grid-cols-3 gap-4 text-center text-sm border-t border-zinc-800 pt-3">
+              <div>
+                <div className="text-zinc-500 text-xs uppercase">Nudges</div>
+                <div className="text-yellow-400 font-bold">{interventionCounts.nudge}</div>
+              </div>
+              <div>
+                <div className="text-zinc-500 text-xs uppercase">Warnings</div>
+                <div className="text-orange-400 font-bold">{interventionCounts.warning}</div>
+              </div>
+              <div>
+                <div className="text-zinc-500 text-xs uppercase">Force Closes</div>
+                <div className="text-crimson font-bold">{interventionCounts.force_close}</div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
