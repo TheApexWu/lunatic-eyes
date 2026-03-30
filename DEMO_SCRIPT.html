@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lunatic Eyes - Pitch Script</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0a;
+    color: #d4d4d8;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.7;
+    padding: 3rem 1.5rem;
+  }
+  .container { max-width: 720px; margin: 0 auto; }
+  h1 {
+    color: #dc2626;
+    font-size: 2rem;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.25rem;
+  }
+  .subtitle {
+    color: #71717a;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 3rem;
+  }
+  h2 {
+    color: #dc2626;
+    font-size: 1.1rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 3rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #27272a;
+  }
+  h3 {
+    color: #e4e4e7;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+  }
+  .timing {
+    display: inline-block;
+    background: #dc2626;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+    letter-spacing: 0.05em;
+  }
+  p { margin-bottom: 1rem; color: #a1a1aa; }
+  .script-line {
+    color: #e4e4e7;
+    font-size: 1.05rem;
+    line-height: 1.8;
+    margin-bottom: 1.25rem;
+  }
+  .stage-direction {
+    color: #71717a;
+    font-style: italic;
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+  }
+  .preshow {
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin-bottom: 2rem;
+  }
+  .preshow li {
+    color: #a1a1aa;
+    font-size: 0.9rem;
+    margin-bottom: 0.4rem;
+    list-style: none;
+    padding-left: 1.2rem;
+    position: relative;
+  }
+  .preshow li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.6rem;
+    width: 6px;
+    height: 6px;
+    background: #dc2626;
+    border-radius: 50%;
+  }
+  code {
+    background: #27272a;
+    color: #dc2626;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.85rem;
+  }
+  .qa-block {
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .qa-q {
+    color: #e4e4e7;
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+  }
+  .qa-a {
+    color: #a1a1aa;
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+  .shot-list {
+    display: grid;
+    gap: 0.75rem;
+  }
+  .shot {
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+  }
+  .shot-label {
+    color: #dc2626;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.4rem;
+  }
+  .shot-desc { color: #a1a1aa; font-size: 0.9rem; }
+  .divider {
+    border: none;
+    border-top: 1px solid #27272a;
+    margin: 3rem 0;
+  }
+  .backup-box {
+    background: #1c1917;
+    border: 1px solid #44403c;
+    border-radius: 8px;
+    padding: 1.5rem;
+  }
+  .backup-box .script-line { font-size: 0.95rem; }
+  .tips li {
+    color: #a1a1aa;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+    list-style: none;
+    padding-left: 1.2rem;
+    position: relative;
+  }
+  .tips li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.6rem;
+    width: 6px;
+    height: 6px;
+    background: #a1a1aa;
+    border-radius: 50%;
+  }
+  @media print {
+    body { background: #fff; color: #1a1a1a; }
+    .script-line { color: #1a1a1a; }
+    h1, h2, .timing, .shot-label, code { color: #dc2626; }
+    .preshow, .qa-block, .shot, .backup-box { border-color: #ccc; background: #f5f5f5; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>LUNATIC EYES</h1>
+<div class="subtitle">Pitch Script &mdash; Solo Presenter: Amadeus &mdash; 3 min + feedback + 2 min refined</div>
+
+<!-- PRE-SHOW -->
+<h2>Pre-Show <span class="timing">ARRIVE 6:15</span></h2>
+<div class="preshow">
+  <li>Deck loaded, demo video embedded (NOT live demo)</li>
+  <li>Backup: app running on <code>localhost:3000</code> in case Anthony asks to see it live</li>
+  <li><code>npm run dev -- --webpack</code> backgrounded just in case</li>
+</div>
+
+<!-- FIRST PITCH -->
+<h2>First Pitch <span class="timing">3 MIN</span></h2>
+
+<h3>Open: The Moment <span class="timing">30s</span></h3>
+<p class="script-line">You're three hours into a research session. You feel productive. Then you check your screen time report and realize 40 minutes of that was Twitter. Your eyes were open the whole time. You weren't reading. You were glazing.</p>
+<p class="script-line">Every focus app on the market gives you a timer or a URL blocker. Something you can dismiss with one click. They assume you'll police yourself. But the problem isn't that you choose to get distracted. The problem is you don't even notice it happening.</p>
+
+<h3>The Product <span class="timing">30s</span></h3>
+<p class="script-line">Lunatic Eyes watches your eyes through your webcam. Not your screen time. Not your browser history. Your actual eyes.</p>
+<p class="script-line">You start a session by telling it what you're here to do. "Focus on research. No social media." Then it watches. It gives you a Focus Score from 0 to 100, broken down into four signals: how stable your gaze is, how deeply you're engaging with content, whether you're actually looking at the screen, and whether your blink patterns indicate alertness or fatigue.</p>
+<p class="script-line">When your Focus Score drops and stays down, the screen itself starts to drain. Color fades out. Your periphery darkens. If you keep drifting, it closes the tab and takes over your screen with a forced break showing you exactly what happened.</p>
+
+<h3>Demo <span class="timing">45s</span></h3>
+<p class="stage-direction">[Play embedded recording. Narrate over it:]</p>
+<p class="script-line">Here's a session. I type my intent: "Deep work on research paper. No social media." The system parses that into a blocking policy and starts tracking.</p>
+<p class="script-line">Watch the sidebar. Focus Score at 82, all four sub-scores green. State reads FOCUSED. This is what locked-in attention looks like through a webcam.</p>
+<p class="script-line">Now I open Twitter. Watch the screen. The color starts draining out. Grayscale creeping in from the edges, a dark vignette closing around the content. That's the nudge. Ten seconds of sustained drift. A toast appears: "Your attention is drifting."</p>
+<p class="script-line">I stay on Twitter. The screen goes fully gray, blurs slightly. Warning banner. Blocked tabs close automatically. I keep going. Full intervention. Black screen, breathing exercise, my biometric breakdown: Focus Score 23, Gaze Stability at 12, Engagement bottomed out. The system doesn't punish you. It shows you the truth about what your body was doing.</p>
+
+<h3>Why This Works <span class="timing">30s</span></h3>
+<p class="script-line">Two things make this different from every focus tool you've used.</p>
+<p class="script-line">First, it reads physiology, not URLs. You can be on an allowed site and still be glazing. You can be on a blocked site reading something important. The biometric layer captures what screen time can't.</p>
+<p class="script-line">Second, the intervention is graduated and physical. Not a notification you swipe away. Your screen literally loses its color. It's designed to feel wrong before you consciously register what's happening. By the time you notice the grayscale, you've already started to refocus.</p>
+
+<h3>Close <span class="timing">15s</span></h3>
+<p class="script-line">All face processing is client-side. No webcam frames leave the browser. The only external call is an AI parsing your typed intent as text.</p>
+<p class="script-line">The name comes from the Latin "luna." The moon. The thing that watches you whether you look at it or not.</p>
+<p class="script-line">Lunatic Eyes. Thank you.</p>
+
+<hr class="divider">
+
+<!-- REFINED PITCH -->
+<h2>Refined Pitch <span class="timing">2 MIN</span></h2>
+<p class="stage-direction">[Adjust based on what Anthony flags. Likely cuts:]</p>
+<div class="preshow">
+  <li>If he says "too much tech": cut the sub-score breakdown, just say "Focus Score" and "four biometric signals"</li>
+  <li>If he says "what's the market": add "Screen time is a $1.2B category. Every app in it tracks URLs. None of them track the user."</li>
+  <li>If he says "what's next": add "Next: external camera support for clinical-grade tracking, persistent analytics across sessions, and adaptive baselines that learn your attention patterns over time."</li>
+  <li>If he says "show me": have <code>localhost:3000</code> ready, pre-calibrated</li>
+</div>
+
+<h3>Backup 2-Min Version</h3>
+<div class="backup-box">
+  <p class="script-line">You're three hours into a research session. You feel productive. Then you check screen time: 40 minutes was Twitter. You didn't choose to get distracted. You didn't notice.</p>
+  <p class="script-line">Lunatic Eyes watches your eyes through your webcam. You set a session intent: what you're here to do, what to block. It gives you a real-time Focus Score built from four biometric signals: gaze stability, engagement depth, screen presence, and alertness.</p>
+  <p class="script-line">When your score drops, the screen drains to grayscale. Your periphery darkens. If you keep drifting, blocked tabs close and it forces a break showing your biometric breakdown.</p>
+  <p class="stage-direction">[Point to key moment in video]</p>
+  <p class="script-line">This isn't screen time tracking. It's physiology. And the intervention isn't a notification you dismiss. Your screen physically changes. It's designed to feel wrong before you consciously notice.</p>
+  <p class="script-line">All processing is client-side. No frames leave the browser. Lunatic Eyes. Thank you.</p>
+</div>
+
+<hr class="divider">
+
+<!-- DEMO VIDEO RECORDING GUIDE -->
+<h2>Demo Video Recording Guide</h2>
+
+<h3>Setup</h3>
+<div class="preshow">
+  <li>Clean browser, no bookmarks bar, dark theme</li>
+  <li>App running at <code>localhost:3000</code></li>
+  <li>Complete calibration before recording</li>
+  <li>Have Twitter/X open in another tab ready to switch to</li>
+  <li>Screen record full screen (QuickTime or OBS)</li>
+</div>
+
+<h3>Shot List <span class="timing">60-90s TOTAL</span></h3>
+<div class="shot-list">
+  <div class="shot">
+    <div class="shot-label">Shot 1: Intent Screen <span class="timing">5s</span></div>
+    <div class="shot-desc">Type: "Deep work on research paper. No social media." Show the policy parsing (block list populates).</div>
+  </div>
+  <div class="shot">
+    <div class="shot-label">Shot 2: Focused State <span class="timing">10s</span></div>
+    <div class="shot-desc">Read something on screen. Show sidebar: Focus Score green (70+), all bars green, state = FOCUSED.</div>
+  </div>
+  <div class="shot">
+    <div class="shot-label">Shot 3: Drift Begins <span class="timing">10s</span></div>
+    <div class="shot-desc">Switch to Twitter. Scroll idly. Show Focus Score dropping, bars turning yellow. Grayscale starts creeping in. Vignette darkens edges.</div>
+  </div>
+  <div class="shot">
+    <div class="shot-label">Shot 4: Nudge Fires <span class="timing">5s</span></div>
+    <div class="shot-desc">Toast appears bottom-right: "Drifting. Your attention is drifting." Screen at 60% grayscale.</div>
+  </div>
+  <div class="shot">
+    <div class="shot-label">Shot 5: Warning Escalation <span class="timing">5s</span></div>
+    <div class="shot-desc">Screen fully gray + slight blur. Red warning banner across top. "Blocked tabs closed" message.</div>
+  </div>
+  <div class="shot">
+    <div class="shot-label">Shot 6: Break Overlay <span class="timing">10s</span></div>
+    <div class="shot-desc">Full black screen. Breathing circle animating. "THE EYE INTERVENED." Show: Focus Score 23/100, Gaze Stability 12%, Alertness 45%. Diagnosis: "Screen glazing detected..."</div>
+  </div>
+  <div class="shot">
+    <div class="shot-label">Shot 7: Dashboard <span class="timing">10s</span></div>
+    <div class="shot-desc">Scroll to dashboard after dismissing break. Show: hero focus score, sub-score bars, Focus Score Over Time chart, gaze heatmap.</div>
+  </div>
+</div>
+
+<h3>Recording Tips</h3>
+<ul class="tips">
+  <li>Record in a well-lit room (MediaPipe needs light)</li>
+  <li>Don't narrate during recording (narrate live over the video during pitch)</li>
+  <li>Exaggerate the drift: look around, scroll fast, let eyes wander</li>
+  <li>If grayscale doesn't trigger fast enough, wait. Don't fake it.</li>
+</ul>
+
+<hr class="divider">
+
+<!-- Q&A -->
+<h2>Q&A Ammo</h2>
+
+<div class="qa-block">
+  <div class="qa-q">"How accurate is webcam eye tracking?"</div>
+  <div class="qa-a">About 2-3 degrees, roughly 130 pixels. Quadrant-level, not word-level. But we're not tracking which word you read. We're tracking patterns: is your gaze stable or scattered? Are your blinks normal or suppressed? Those signals are robust even at low resolution.</div>
+</div>
+
+<div class="qa-block">
+  <div class="qa-q">"What if someone looks away?"</div>
+  <div class="qa-a">Head pose estimation detects yaw and pitch. If you turn away for more than 2 seconds, the system classifies you as AWAY and starts the intervention ladder.</div>
+</div>
+
+<div class="qa-block">
+  <div class="qa-q">"Why not just a Chrome extension?"</div>
+  <div class="qa-a">Chrome extensions track URLs. We track physiology. You can stare at a Google Doc for 20 minutes without reading a single word. A URL blocker thinks you're focused. We know you're not.</div>
+</div>
+
+<div class="qa-block">
+  <div class="qa-q">"What about false positives?"</div>
+  <div class="qa-a">Classification defaults to FOCUSED with a 15-second warmup. States must persist through debounce windows: 6 seconds for drifting, 10 seconds for glazed. Normal reading, looking at your phone for a moment, adjusting in your chair -- none of that triggers intervention.</div>
+</div>
+
+<div class="qa-block">
+  <div class="qa-q">"What's the grayscale thing?"</div>
+  <div class="qa-a">Graduated intervention. Most focus apps give you a binary: blocked or not. We drain the color from your screen proportionally. At nudge level it's 60% grayscale with a darkened vignette. At warning it's full grayscale with blur. It's designed to create a visceral sense that something is wrong, before you consciously process what changed.</div>
+</div>
+
+<div class="qa-block">
+  <div class="qa-q">"Privacy?"</div>
+  <div class="qa-a">Zero frames leave the browser. MediaPipe runs entirely client-side via WebAssembly. No telemetry. No cloud processing of video. The only network call is AI parsing your typed session intent as text.</div>
+</div>
+
+<div class="qa-block">
+  <div class="qa-q">"What's the business model?"</div>
+  <div class="qa-a">Freemium. Free for personal use with basic metrics. Pro tier for persistent analytics, custom intervention policies, and session history. Enterprise for workplace attention auditing with consent.</div>
+</div>
+
+<div class="qa-block">
+  <div class="qa-q">"Where does this go?"</div>
+  <div class="qa-a">Three directions. One: external camera and dedicated eye tracker support for clinical-grade accuracy. Two: enterprise (voluntary attention auditing for remote teams, aggregate-only reporting). Three: clinical (ADHD screening, attention deficit quantification for therapists).</div>
+</div>
+
+<div class="qa-block">
+  <div class="qa-q">"Team?"</div>
+  <div class="qa-a">Built this at the Grayscale hackathon. I'm Amadeus Wu, CS/Data Science from NYU. Architecture, eye tracking pipeline, attention engine, and the biometric classification system are mine.</div>
+</div>
+
+<div class="qa-block">
+  <div class="qa-q">"What's the Focus Score?"</div>
+  <div class="qa-a">Weighted composite of four signals. Gaze Stability (35%): how scattered vs concentrated your eye movements are. Engagement Depth (30%): fixation duration and saccade structure, inspired by the K-coefficient from attention research. Screen Presence (25%): are you actually looking at the screen. Alertness (10%): blink rate relative to your personal baseline. All normalized to your own patterns after a 15-second warmup.</div>
+</div>
+
+</div>
+</body>
+</html>

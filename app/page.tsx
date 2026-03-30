@@ -66,8 +66,6 @@ export default function Home() {
 
   const closeBlockedApps = useCallback(async () => {
     if (!sessionPolicy || sessionPolicy.block.length === 0) return;
-    // Map policy block categories to actual macOS app names
-    // URL patterns close Chrome tabs; plain names quit native apps
     const appMap: Record<string, string[]> = {
       twitter: ["twitter.com", "x.com"],
       instagram: ["instagram.com"],
@@ -75,6 +73,7 @@ export default function Home() {
       reddit: ["reddit.com"],
       facebook: ["facebook.com"],
       youtube: ["youtube.com"],
+      pinterest: ["pinterest.com"],
       "social media": ["twitter.com", "x.com", "instagram.com", "facebook.com", "tiktok.com", "reddit.com", "Discord"],
       news: ["news.google.com", "cnn.com", "nytimes.com"],
       games: [],
@@ -85,7 +84,7 @@ export default function Home() {
     };
     const appsToClose = new Set<string>();
     for (const category of sessionPolicy.block) {
-      const apps = appMap[category.toLowerCase()] || [category];
+      const apps = appMap[category.toLowerCase()] || [category.toLowerCase() + ".com"];
       apps.forEach((a) => appsToClose.add(a));
     }
     if (appsToClose.size === 0) return;
@@ -109,25 +108,25 @@ export default function Home() {
     lastInterventionRef.current = now;
 
     const metricsCtx = currentMetrics
-      ? `Blink rate: ${currentMetrics.blinkRate.toFixed(0)}/min (normal: 15-20). Gaze variance: ${currentMetrics.gazeVariance.toFixed(0)}px. Saccade speed: ${currentMetrics.saccadeSpeed.toFixed(0)}px/s. Fixation: ${currentMetrics.fixationDuration.toFixed(0)}ms.`
+      ? `Focus score: ${currentMetrics.focusScore}. Gaze stability: ${currentMetrics.gazeStability}%. Engagement: ${currentMetrics.engagementDepth}%. Alertness: ${currentMetrics.alertness}%. Screen presence: ${currentMetrics.screenPresence}%.`
       : "";
     const policyCtx = sessionPolicy
       ? `Blocking: ${sessionPolicy.block.join(", ") || "nothing"}. Allowing: ${sessionPolicy.allow.join(", ") || "everything"}. Tone: ${sessionPolicy.tone}.`
       : "";
 
-    // Close tabs IMMEDIATELY (don't wait for OpenClaw)
-    closeBlockedApps().catch(() => {});
+    // Close tabs on warning/force_close only (not nudge)
+    if (level !== "nudge") {
+      closeBlockedApps().catch(() => {});
+    }
 
-    // Set fallback message instantly, then let OpenClaw upgrade it async
     if (level === "nudge") setInterventionMessage("Your attention is drifting. Refocus.");
-    if (level === "warning") setInterventionMessage("Blocked tabs closed. Your eyes are glazing.");
+    if (level === "warning") setInterventionMessage("Your eyes are glazing. Blocked tabs closed.");
     if (level === "force_close") setInterventionMessage("Session paused. Take a break and refocus.");
 
-    // OpenClaw message in background (fire-and-forget, upgrades message when ready)
     const promptMap: Record<string, string> = {
       nudge: `You are Lunatic Eyes, an attention monitor. The user's goal: "${sessionIntent}". ${policyCtx} Their attention is DRIFTING. ${metricsCtx} Write a single-sentence nudge (under 20 words) referencing their goal. Be direct, ${sessionPolicy?.tone || "firm"}.`,
-      warning: `You are Lunatic Eyes, an attention monitor. The user's goal: "${sessionIntent}". ${policyCtx} Their attention has been DISTRACTED for 10+ seconds. Blocked tabs were just closed. ${metricsCtx} Write a single-sentence warning (under 25 words). Reference their goal and what was blocked. Be sharp, ${sessionPolicy?.tone || "firm"}.`,
-      force_close: `You are Lunatic Eyes, an attention monitor. The user's goal: "${sessionIntent}". ${policyCtx} They have been GLAZED for 15+ seconds. All blocked tabs closed. Session forcefully paused. ${metricsCtx} Write a 2-3 sentence assessment of what happened. Be direct. Reference their biometrics. End with one actionable suggestion. Tone: ${sessionPolicy?.tone || "firm"}.`,
+      warning: `You are Lunatic Eyes, an attention monitor. The user's goal: "${sessionIntent}". ${policyCtx} Their attention has been DRIFTING for 30+ seconds. Blocked tabs were just closed. ${metricsCtx} Write a single-sentence warning (under 25 words). Reference their goal. Be sharp, ${sessionPolicy?.tone || "firm"}.`,
+      force_close: `You are Lunatic Eyes, an attention monitor. The user's goal: "${sessionIntent}". ${policyCtx} They have been GLAZED for 60+ seconds. All blocked tabs closed. Session forcefully paused. ${metricsCtx} Write a 2-3 sentence assessment. Be direct. Reference their biometrics. End with one actionable suggestion. Tone: ${sessionPolicy?.tone || "firm"}.`,
     };
 
     if (promptMap[level]) {
@@ -147,7 +146,7 @@ export default function Home() {
             }
           }
         })
-        .catch(() => {}); // fallback already set above
+        .catch(() => {});
     }
   }, [sessionIntent, sessionPolicy, closeBlockedApps]);
 
@@ -189,18 +188,15 @@ export default function Home() {
     [],
   );
 
-  // Keep ref synced for polling
   const closeBlockedAppsRef = useRef(closeBlockedApps);
   closeBlockedAppsRef.current = closeBlockedApps;
 
-  // Session timer + blocked site polling
   useEffect(() => {
     if (!tracking) return;
     if (sessionStartRef.current === 0) sessionStartRef.current = Date.now();
 
     const interval = setInterval(() => {
       setElapsed(Math.floor((Date.now() - sessionStartRef.current) / 1000));
-      // Poll: close blocked tabs every 3s regardless of attention state
       closeBlockedAppsRef.current().catch(() => {});
     }, 3000);
 
@@ -213,27 +209,56 @@ export default function Home() {
     return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
   };
 
-  // Session intent gate: user sets their goal before anything starts
+  // Compute visual intervention intensity
+  const grayscaleLevel = intervention === "nudge" ? 0.6 :
+                         intervention === "warning" ? 1.0 : 0;
+  const blurLevel = intervention === "warning" ? 2 : 0;
+
   if (!sessionIntent) {
     return <SessionIntent onStart={async (intent, policy) => {
       setSessionIntent(intent);
       setSessionPolicy(policy);
-      // Request camera permission BEFORE showing calibration overlay
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        stream.getTracks().forEach(t => t.stop()); // release, EyeTracker will re-request
+        stream.getTracks().forEach(t => t.stop());
       } catch {
-        // permission denied - still proceed, calibration has SKIP button
+        // permission denied
       }
       setTracking(true);
       setCalibrating(true);
     }} />;
   }
 
+  const stateLabel =
+    attentionState === "locked-in" ? "FOCUSED" :
+    attentionState === "away" ? "AWAY" :
+    attentionState.toUpperCase();
+
   return (
-    <main
-      className={`min-h-screen ${intervention === "nudge" ? "nudge-pulse" : ""}`}
-    >
+    <main className="min-h-screen relative">
+      {/* TIER 1: Grayscale drain + vignette overlay (pointer-events: none) */}
+      {intervention !== "none" && intervention !== "force_close" && (
+        <div
+          className="fixed inset-0 z-[45] pointer-events-none transition-all duration-[2000ms]"
+          style={{
+            backdropFilter: `grayscale(${grayscaleLevel}) blur(${blurLevel}px)`,
+            WebkitBackdropFilter: `grayscale(${grayscaleLevel}) blur(${blurLevel}px)`,
+          }}
+        />
+      )}
+
+      {/* Vignette on nudge/warning */}
+      {intervention !== "none" && intervention !== "force_close" && (
+        <div
+          className="fixed inset-0 z-[46] pointer-events-none transition-opacity duration-[2000ms]"
+          style={{
+            boxShadow: intervention === "warning"
+              ? "inset 0 0 200px rgba(0,0,0,0.85)"
+              : "inset 0 0 120px rgba(0,0,0,0.5)",
+          }}
+        />
+      )}
+
       {calibrating && (
         <Calibration
           faceMeshReady={tracking}
@@ -256,16 +281,20 @@ export default function Home() {
             setShowBreak(false);
             setIntervention("none");
             setInterventionMessage("");
+            setTracking(true);
           }}
         />
       )}
 
+      {/* Nudge toast (bottom-right) */}
       {intervention === "nudge" && interventionMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-zinc-950 border border-crimson/60 text-zinc-200 px-5 py-3 rounded-xl max-w-sm text-sm shadow-lg shadow-crimson/10">
+        <div className="fixed bottom-6 right-6 z-50 bg-zinc-950/95 border border-crimson/60 text-zinc-200 px-5 py-3 rounded-xl max-w-sm text-sm shadow-lg shadow-crimson/10 backdrop-blur-sm">
+          <div className="text-xs text-crimson uppercase tracking-wider mb-1">Drifting</div>
           {interventionMessage}
         </div>
       )}
 
+      {/* Warning banner (top, full width) */}
       {intervention === "warning" && !showBreak && (
         <div className="fixed top-0 inset-x-0 z-50 bg-crimson/90 text-white text-center py-3 font-bold tracking-wide">
           {interventionMessage || "YOUR EYES ARE GLAZING"}
@@ -359,9 +388,29 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Focus score hero card */}
+            {metrics && (
+              <div className={`bg-zinc-950 border rounded-xl p-4 ${
+                metrics.focusScore >= 70 ? "border-green-500/30" :
+                metrics.focusScore >= 40 ? "border-yellow-500/30" :
+                "border-crimson/30"
+              }`}>
+                <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-2">
+                  Focus Score
+                </h3>
+                <div className={`text-4xl font-bold ${
+                  metrics.focusScore >= 70 ? "text-green-400" :
+                  metrics.focusScore >= 40 ? "text-yellow-400" :
+                  "text-crimson"
+                }`}>
+                  {metrics.focusScore}
+                </div>
+              </div>
+            )}
+
             <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
               <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-3">
-                Attention State
+                State
               </h3>
               <div
                 className={`text-2xl font-bold ${
@@ -374,42 +423,47 @@ export default function Home() {
                         : "text-crimson"
                 }`}
               >
-                {attentionState.toUpperCase()}
+                {stateLabel}
               </div>
             </div>
 
+            {/* Sub-scores sidebar */}
             {metrics && (
               <>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-                  <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-3">
-                    Fixation Duration
-                  </h3>
-                  <div className="text-xl font-bold text-zinc-200">
-                    {metrics.fixationDuration.toFixed(0)}ms
+                  <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Gaze Stability</h3>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${metrics.gazeStability >= 70 ? "bg-green-500" : metrics.gazeStability >= 40 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${metrics.gazeStability}%` }} />
+                    </div>
+                    <span className="text-sm font-bold text-zinc-300">{metrics.gazeStability}</span>
                   </div>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-                  <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-3">
-                    Blink Rate
-                  </h3>
-                  <div className="text-xl font-bold text-zinc-200">
-                    {metrics.blinkRate.toFixed(1)}/min
+                  <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Engagement</h3>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${metrics.engagementDepth >= 70 ? "bg-green-500" : metrics.engagementDepth >= 40 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${metrics.engagementDepth}%` }} />
+                    </div>
+                    <span className="text-sm font-bold text-zinc-300">{metrics.engagementDepth}</span>
                   </div>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-                  <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-3">
-                    Gaze Variance
-                  </h3>
-                  <div className="text-xl font-bold text-zinc-200">
-                    {metrics.gazeVariance.toFixed(1)}px
+                  <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Screen Presence</h3>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${metrics.screenPresence >= 70 ? "bg-green-500" : metrics.screenPresence >= 40 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${metrics.screenPresence}%` }} />
+                    </div>
+                    <span className="text-sm font-bold text-zinc-300">{metrics.screenPresence}</span>
                   </div>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-                  <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-3">
-                    Saccade Speed
-                  </h3>
-                  <div className="text-xl font-bold text-zinc-200">
-                    {metrics.saccadeSpeed.toFixed(1)}px/s
+                  <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Alertness</h3>
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full ${metrics.alertness >= 70 ? "bg-green-500" : metrics.alertness >= 40 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${metrics.alertness}%` }} />
+                    </div>
+                    <span className="text-sm font-bold text-zinc-300">{metrics.alertness}</span>
                   </div>
                 </div>
               </>

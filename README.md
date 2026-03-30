@@ -16,12 +16,12 @@ A voluntary panopticon. The same eye that surveils you is the one that frees you
    - **LOCKED-IN**: Fixation > 2s, blink rate 10-25/min, gaze variance < 100px. You're reading.
    - **DRIFTING**: Not locked-in, not yet glazed. Your eyes are wandering.
    - **GLAZED**: Blink rate < 10/min, variance < 80px. Eyes open, nobody home. Screen staring.
-   - **DISTRACTED**: Saccade speed > 500px/s, variance > 200px. Eyes jumping everywhere.
+   - **AWAY**: Head turned beyond yaw/pitch threshold for >2s. Looking off-screen.
 
 5. **Intervention.** When you leave LOCKED-IN, a timer starts:
-   - **5s - Nudge**: Blocked Chrome tabs close. macOS notification fires. Screen pulses crimson.
-   - **10s - Warning**: Tabs close again. "YOUR EYES ARE GLAZING" banner appears.
-   - **15s - Force Close**: Tabs close. Full-screen break overlay with behavioral assessment. Tracking stops.
+   - **10s - Nudge**: Screen drains to grayscale. Toast notification with AI-generated message referencing your goal.
+   - **30s - Warning**: Full grayscale + blur + vignette. Blocked Chrome tabs close. Warning banner appears.
+   - **60s - Force Close**: All blocked tabs close. Full-screen break overlay with 4-7-8 breathing exercise and behavioral assessment. Tracking pauses.
 
 6. **Dashboard.** Focus Score (0-100 composite), Focus Ratio (% of session locked-in), Peak Focus Streak, Distraction Count, gaze heatmap, variance/saccade/focus-score timelines, and a written behavioral assessment of your session.
 
@@ -35,7 +35,7 @@ MediaPipe Face Mesh (CDN, 478 landmarks + 10 iris)
   |
   +---> Calibration (5-point, personalized iris-to-screen mapping)
   |
-  +---> EMA-smoothed gaze coordinates (0.15 factor)
+  +---> 1-Euro filtered gaze coordinates (adaptive cutoff)
   |       |
   |       +---> Browser gaze dot overlay (canvas, crimson)
   |       +---> Native macOS overlay (Swift, /tmp/lunatic-gaze.json, 60fps)

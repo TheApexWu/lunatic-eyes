@@ -12,10 +12,202 @@ export const FACE_OVAL = [
   162, 21, 54, 103, 67, 109,
 ];
 
+// Head pose landmarks for solvePnP-lite (nose tip, chin, eye corners, mouth corners)
+export const HEAD_POSE_LANDMARKS = [1, 33, 263, 61, 291, 199];
+
 export const MESH_COLOR = "#DC143C";
 export const IRIS_COLOR = "#FF0000";
 export const CONNECTION_COLOR = "rgba(220, 20, 60, 0.4)";
 
+// ---------------------------------------------------------------------------
+// 1-Euro Filter: low jitter when still, fast response when moving
+// ---------------------------------------------------------------------------
+export class OneEuroFilter {
+  private freq: number;
+  private minCutoff: number;
+  private beta: number;
+  private dCutoff: number;
+  private xPrev: number | null = null;
+  private dxPrev: number = 0;
+  private tPrev: number | null = null;
+
+  constructor(freq = 30, minCutoff = 1.5, beta = 0.01, dCutoff = 1.0) {
+    this.freq = freq;
+    this.minCutoff = minCutoff;
+    this.beta = beta;
+    this.dCutoff = dCutoff;
+  }
+
+  private alpha(cutoff: number): number {
+    const te = 1.0 / this.freq;
+    const tau = 1.0 / (2 * Math.PI * cutoff);
+    return 1.0 / (1.0 + tau / te);
+  }
+
+  filter(x: number, timestamp?: number): number {
+    if (this.tPrev !== null && timestamp !== undefined) {
+      const dt = timestamp - this.tPrev;
+      if (dt > 0) this.freq = 1.0 / dt;
+    }
+    this.tPrev = timestamp ?? (this.tPrev ?? 0);
+
+    if (this.xPrev === null) {
+      this.xPrev = x;
+      return x;
+    }
+
+    const dx = (x - this.xPrev) * this.freq;
+    const edx = this.alpha(this.dCutoff);
+    const dxHat = edx * dx + (1 - edx) * this.dxPrev;
+    this.dxPrev = dxHat;
+
+    const cutoff = this.minCutoff + this.beta * Math.abs(dxHat);
+    const a = this.alpha(cutoff);
+    const xHat = a * x + (1 - a) * this.xPrev;
+    this.xPrev = xHat;
+
+    return xHat;
+  }
+
+  reset() {
+    this.xPrev = null;
+    this.dxPrev = 0;
+    this.tPrev = null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GazeTracker: encapsulates all state (no module-level mutables)
+// ---------------------------------------------------------------------------
+export class GazeTracker {
+  private filterRx = new OneEuroFilter(30, 1.5, 0.01);
+  private filterRy = new OneEuroFilter(30, 1.5, 0.01);
+
+  reset() {
+    this.filterRx.reset();
+    this.filterRy.reset();
+  }
+
+  getIrisRatios(
+    landmarks: { x: number; y: number }[],
+  ): { rx: number; ry: number } | null {
+    const leftOuter = landmarks[33];
+    const leftInner = landmarks[133];
+    const rightOuter = landmarks[362];
+    const rightInner = landmarks[263];
+    const leftIris = landmarks[468];
+    const rightIris = landmarks[473];
+    const leftTop = landmarks[159];
+    const leftBot = landmarks[145];
+    const rightTop = landmarks[386];
+    const rightBot = landmarks[374];
+
+    if (!leftOuter || !leftInner || !rightOuter || !rightInner ||
+        !leftIris || !rightIris || !leftTop || !leftBot || !rightTop || !rightBot) {
+      return null;
+    }
+
+    // Both eyes: same direction (inner - outer) so ratios have consistent sign
+    const leftW = leftInner.x - leftOuter.x;
+    const rightW = rightInner.x - rightOuter.x;
+    const leftH = leftBot.y - leftTop.y;
+    const rightH = rightBot.y - rightTop.y;
+
+    if (Math.abs(leftW) < 0.01 || Math.abs(rightW) < 0.01 ||
+        Math.abs(leftH) < 0.005 || Math.abs(rightH) < 0.005) {
+      return null;
+    }
+
+    // FIXED: both measured from outer corner
+    const leftRatioX = (leftIris.x - leftOuter.x) / leftW;
+    const rightRatioX = (rightIris.x - rightOuter.x) / rightW;
+    const leftRatioY = (leftIris.y - leftTop.y) / leftH;
+    const rightRatioY = (rightIris.y - rightTop.y) / rightH;
+
+    // Weight by eye openness (larger opening = more reliable)
+    const leftOpen = Math.abs(leftH);
+    const rightOpen = Math.abs(rightH);
+    const totalOpen = leftOpen + rightOpen;
+    const wL = totalOpen > 0 ? leftOpen / totalOpen : 0.5;
+    const wR = totalOpen > 0 ? rightOpen / totalOpen : 0.5;
+
+    const rawRx = wL * leftRatioX + wR * rightRatioX;
+    const rawRy = wL * leftRatioY + wR * rightRatioY;
+
+    const now = Date.now() / 1000;
+    const rx = this.filterRx.filter(rawRx, now);
+    const ry = this.filterRy.filter(rawRy, now);
+
+    return { rx, ry };
+  }
+
+  estimateGaze(
+    landmarks: { x: number; y: number }[],
+    screenW: number,
+    screenH: number,
+    cal?: GazeCalibration,
+  ): { x: number; y: number } | null {
+    const ratios = this.getIrisRatios(landmarks);
+    if (!ratios) return null;
+
+    const c = cal || DEFAULT_CALIBRATION;
+    const rangeX = c.maxRatioX - c.minRatioX || 0.001;
+    const rangeY = c.maxRatioY - c.minRatioY || 0.001;
+
+    const normalizedX = (ratios.rx - c.minRatioX) / rangeX;
+    const normalizedY = (ratios.ry - c.minRatioY) / rangeY;
+
+    // Mirror X (looking left = screen right when facing camera)
+    // Soft clamp with sigmoid-like easing instead of hard clamp
+    const clampSoft = (v: number) => {
+      if (v >= 0 && v <= 1) return v;
+      if (v < 0) return 0.05 * v; // allow slight extrapolation
+      return 1 + 0.05 * (v - 1);
+    };
+
+    const screenX = (1 - Math.max(0, Math.min(1, clampSoft(normalizedX)))) * screenW;
+    const screenY = Math.max(0, Math.min(1, clampSoft(normalizedY))) * screenH;
+
+    return { x: screenX, y: screenY };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Head pose estimation (lightweight, no solvePnP -- uses landmark geometry)
+// ---------------------------------------------------------------------------
+export function estimateHeadPose(
+  landmarks: { x: number; y: number; z?: number }[],
+): { pitch: number; yaw: number } {
+  // Use nose tip (1), left eye outer (33), right eye outer (263)
+  const nose = landmarks[1];
+  const leftEye = landmarks[33];
+  const rightEye = landmarks[263];
+  const chin = landmarks[152];
+
+  if (!nose || !leftEye || !rightEye || !chin) return { pitch: 0, yaw: 0 };
+
+  // Yaw: asymmetry of nose position between eyes
+  const eyeMidX = (leftEye.x + rightEye.x) / 2;
+  const eyeWidth = Math.abs(rightEye.x - leftEye.x);
+  if (eyeWidth < 0.01) return { pitch: 0, yaw: 0 };
+  // Positive yaw = head turned right (from user's perspective)
+  const yawRatio = (nose.x - eyeMidX) / eyeWidth;
+  const yaw = yawRatio * 90; // approximate degrees
+
+  // Pitch: nose-to-eye-midpoint vertical offset relative to face height
+  const eyeMidY = (leftEye.y + rightEye.y) / 2;
+  const faceHeight = Math.abs(chin.y - eyeMidY);
+  if (faceHeight < 0.01) return { pitch: 0, yaw };
+  const pitchRatio = (nose.y - eyeMidY) / faceHeight;
+  // Normalize: ~0.6 is neutral, lower = looking up, higher = looking down
+  const pitch = (pitchRatio - 0.6) * 120;
+
+  return { pitch, yaw };
+}
+
+// ---------------------------------------------------------------------------
+// Legacy exports for backward compatibility
+// ---------------------------------------------------------------------------
 export function computeEAR(
   landmarks: { x: number; y: number }[],
   eyeIndices: number[],
@@ -45,7 +237,6 @@ export function computeIrisSize(
 
   if (!leftCenter || !leftEdge || !rightCenter || !rightEdge) return 0;
 
-  // Use vertical iris landmarks (top/bottom poles) for true diameter
   const leftTop = landmarks[470];
   const leftBot = landmarks[471];
   const rightTop = landmarks[475];
@@ -135,7 +326,7 @@ function drawEyeOutline(
   ctx.stroke();
 }
 
-// Calibration ranges (personalized via 5-point calibration, or defaults)
+// Calibration types
 export interface GazeCalibration {
   minRatioX: number;
   maxRatioX: number;
@@ -150,90 +341,23 @@ export const DEFAULT_CALIBRATION: GazeCalibration = {
   maxRatioY: 0.75,
 };
 
-// EMA-smoothed iris ratios to dampen frame-to-frame jitter
-let _smoothedRx: number | null = null;
-let _smoothedRy: number | null = null;
-const IRIS_EMA = 0.4; // higher = more responsive, lower = smoother
-
-export function resetIrisSmoothing() {
-  _smoothedRx = null;
-  _smoothedRy = null;
-}
-
-// Extract raw iris ratios (used by both calibration and gaze estimation)
+// Legacy compat: these are no-ops now, GazeTracker manages its own state
+export function resetIrisSmoothing() {}
 export function getIrisRatios(
   landmarks: { x: number; y: number }[],
 ): { rx: number; ry: number } | null {
-  const leftOuter = landmarks[33];
-  const leftInner = landmarks[133];
-  const rightOuter = landmarks[362];
-  const rightInner = landmarks[263];
-  const leftIris = landmarks[468];
-  const rightIris = landmarks[473];
-  const leftTop = landmarks[159];
-  const leftBot = landmarks[145];
-  const rightTop = landmarks[386];
-  const rightBot = landmarks[374];
-
-  if (!leftOuter || !leftInner || !rightOuter || !rightInner ||
-      !leftIris || !rightIris || !leftTop || !leftBot || !rightTop || !rightBot) {
-    return null;
-  }
-
-  const leftW = leftInner.x - leftOuter.x;
-  const rightW = rightOuter.x - rightInner.x;
-  const leftH = leftBot.y - leftTop.y;
-  const rightH = rightBot.y - rightTop.y;
-
-  // Skip if eye dimensions are too small (noise will dominate)
-  if (Math.abs(leftW) < 0.01 || Math.abs(rightW) < 0.01 ||
-      Math.abs(leftH) < 0.005 || Math.abs(rightH) < 0.005) {
-    return null;
-  }
-
-  const leftRatioX = (leftIris.x - leftOuter.x) / leftW;
-  const rightRatioX = (rightIris.x - rightInner.x) / rightW;
-  const leftRatioY = (leftIris.y - leftTop.y) / leftH;
-  const rightRatioY = (rightIris.y - rightTop.y) / rightH;
-
-  const rawRx = (leftRatioX + rightRatioX) / 2;
-  const rawRy = (leftRatioY + rightRatioY) / 2;
-
-  // EMA smooth to kill jitter
-  if (_smoothedRx === null) {
-    _smoothedRx = rawRx;
-    _smoothedRy = rawRy;
-  } else {
-    _smoothedRx += IRIS_EMA * (rawRx - _smoothedRx);
-    _smoothedRy! += IRIS_EMA * (rawRy - _smoothedRy!);
-  }
-
-  return { rx: _smoothedRx, ry: _smoothedRy! };
+  // Legacy: create ephemeral tracker (for Calibration component)
+  const tracker = new GazeTracker();
+  return tracker.getIrisRatios(landmarks);
 }
-
-// Estimate gaze screen position from iris landmarks
-// Uses calibration data for personalized mapping
 export function estimateGaze(
   landmarks: { x: number; y: number }[],
   screenW: number,
   screenH: number,
   cal?: GazeCalibration,
 ): { x: number; y: number } | null {
-  const ratios = getIrisRatios(landmarks);
-  if (!ratios) return null;
-
-  const c = cal || DEFAULT_CALIBRATION;
-  const rangeX = c.maxRatioX - c.minRatioX || 0.001;
-  const rangeY = c.maxRatioY - c.minRatioY || 0.001;
-
-  const normalizedX = (ratios.rx - c.minRatioX) / rangeX;
-  const normalizedY = (ratios.ry - c.minRatioY) / rangeY;
-
-  // Mirror X (looking left = screen right when facing camera)
-  const screenX = (1 - Math.max(0, Math.min(1, normalizedX))) * screenW;
-  const screenY = Math.max(0, Math.min(1, normalizedY)) * screenH;
-
-  return { x: screenX, y: screenY };
+  const tracker = new GazeTracker();
+  return tracker.estimateGaze(landmarks, screenW, screenH, cal);
 }
 
 export function drawGazeDot(

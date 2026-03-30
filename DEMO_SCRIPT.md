@@ -1,107 +1,164 @@
-# Lunatic Eyes - Live Presentation Script
+# Lunatic Eyes - Pitch Script
 
-## Roles
-- **Amadeus**: Narration, concept, architecture walkthrough
-- **Jack**: Live demo operator (driving the screen)
+## Solo presenter: Amadeus
 
-## Pre-Show Setup
-- `npm run dev -- --webpack` on localhost:3000
-- `openclaw browser start`
-- Chrome/Safari open with no x.com tabs
-- Screen share ready
+## FORMAT: 3 min pitch, feedback from Anthony, then 2 min refined pitch
 
 ---
 
-## PART 1: THE THESIS (Amadeus, 60s)
+## PRE-SHOW (arrive by 6:15)
 
-> Every productivity tool trusts you to police yourself. They give you a timer, a to-do list, a focus mode you can dismiss with one click. They assume willpower. Willpower doesn't scale.
-
-> Lunatic Eyes inverts the model. You tell the system what you came here to do. Then the system watches your eyes. Not a timer. Not a Chrome extension checking your URL bar. Your actual eyes. Blink rate. Gaze fixation. Saccade velocity. The biometrics of attention.
-
-> When you drift, it doesn't send you a polite notification. It closes the tab. It escalates. And if you keep drifting, it takes over your screen and shows you your own biometric data: proof that you weren't reading, you were glazing.
-
-> This is a voluntary panopticon. You build the prison. The eye enforces it. The same eye that surveils you is the one that frees you.
+- Deck loaded, demo video embedded (NOT live demo)
+- Backup: app running on localhost:3000 in case Anthony asks to see it live
+- `npm run dev -- --webpack` backgrounded just in case
 
 ---
 
-## PART 2: ARCHITECTURE (Amadeus, 45s)
+## FIRST PITCH (3 minutes)
 
-> Three layers.
+### OPEN: THE MOMENT (30s)
 
-> **Layer 1: Perception.** MediaPipe Face Mesh reads 478 facial landmarks plus iris geometry through the webcam at 30 frames per second. All client-side. No frames leave the browser. We extract four biometric signals: fixation duration, blink rate via EAR thresholds, saccade speed, and gaze variance. These feed into a client-side attention engine that classifies you every second into one of four states: locked-in, drifting, glazed, or distracted.
+You're three hours into a research session. You feel productive. Then you check your screen time report and realize 40 minutes of that was Twitter. Your eyes were open the whole time. You weren't reading. You were glazing.
 
-> **Layer 2: Policy.** Before tracking starts, you declare a session intent in natural language. Claude parses that into a structured policy: what's allowed, what's blocked, what tone to use when it intervenes. The system doesn't decide what's a distraction. You do.
+Every focus app on the market gives you a timer or a URL blocker. Something you can dismiss with one click. They assume you'll police yourself. But the problem isn't that you choose to get distracted. The problem is you don't even notice it happening.
 
-> **Layer 3: Action.** OpenClaw. When your attention state degrades, OpenClaw's browser API identifies and closes blocked tabs programmatically. Not a notification you can swipe away. The tab is gone. It escalates on a ladder: nudge at 3 seconds, warning at 15, full intervention at 35. The intervention screen shows you your own biometrics alongside a generated behavioral assessment.
+### THE PRODUCT (30s)
 
-> Jack, show them.
+Lunatic Eyes watches your eyes through your webcam. Not your screen time. Not your browser history. Your actual eyes.
 
----
+You start a session by telling it what you're here to do. "Focus on research. No social media." Then it watches. It gives you a Focus Score from 0 to 100, broken down into four signals: how stable your gaze is, how deeply you're engaging with content, whether you're actually looking at the screen, and whether your blink patterns indicate alertness or fatigue.
 
-## PART 3: LIVE DEMO (Jack, 90s)
+When your Focus Score drops and stays down, the screen itself starts to drain. Color fades out. Your periphery darkens. If you keep drifting, it closes the tab and takes over your screen with a forced break showing you exactly what happened.
 
-### Intent (15s)
-- Type: "I need to focus on my research paper. Block social media."
-- System parses, shows blocked categories
-- **Amadeus**: "He just set the contract. The system now knows what to enforce."
+### DEMO (show video, 45s)
 
-### Calibration (10s)
-- SKIP calibration (or click through quickly)
-- **Amadeus**: "Five-point iris calibration maps where your eyes point on screen. We'll skip it for time."
+[Play embedded recording. Narrate over it:]
 
-### Tracking (20s)
-- Hit START. Face mesh overlay appears.
-- Jack reads something on screen. State: LOCKED-IN.
-- **Amadeus**: "Watch the metrics. Blink rate stable. Gaze variance low. Fixation holding. The system classifies this as locked-in. No intervention."
+Here's a session. I type my intent: "Deep work on research paper. No social media." The system parses that into a blocking policy and starts tracking.
 
-### The Break (30s)
-- Jack opens x.com in a new tab
-- Within 3 seconds: tab closes. Nudge toast appears.
-- **Amadeus**: "He opened Twitter. Three seconds later, OpenClaw closed it. Not a notification. The tab is dead."
-- Jack opens x.com again
-- Warning banner fires
-- **Amadeus**: "He tried again. The system escalates."
+Watch the sidebar. Focus Score at 82, all four sub-scores green. State reads FOCUSED. This is what locked-in attention looks like through a webcam.
 
-### Force Close (15s)
-- Full overlay: THE EYE INTERVENED
-- Shows biometric breakdown, session goal, behavioral assessment
-- **Amadeus**: "Full intervention. The system shows him his own data. Blink rate dropped. Saccade speed spiked. His eyes were jumping, not reading. It's not punishing him. It's showing him the truth about what his body was doing."
-- Jack clicks "I'm ready to refocus"
+Now I open Twitter. Watch the screen. The color starts draining out. Grayscale creeping in from the edges, a dark vignette closing around the content. That's the nudge. Ten seconds of sustained drift. A toast appears: "Your attention is drifting."
 
----
+I stay on Twitter. The screen goes fully gray, blurs slightly. Warning banner. Blocked tabs close automatically. I keep going. Full intervention. Black screen, breathing exercise, my biometric breakdown: Focus Score 23, Gaze Stability at 12, Engagement bottomed out. The system doesn't punish you. It shows you the truth about what your body was doing.
 
-## PART 4: WHY IT MATTERS (Amadeus, 30s)
+### WHY THIS WORKS (30s)
 
-> Three things make this different from every focus app on the market.
+Two things make this different from every focus tool you've used.
 
-> **One.** It uses real biometrics. Not screen time, not URL tracking. Your blink rate, your gaze fixation, your saccade speed. Data you can't fake and can't argue with.
+First, it reads physiology, not URLs. You can be on an allowed site and still be glazing. You can be on a blocked site reading something important. The biometric layer captures what screen time can't.
 
-> **Two.** It acts, it doesn't suggest. OpenClaw doesn't ask you to close Twitter. It closes Twitter. The intervention is proportional but non-negotiable.
+Second, the intervention is graduated and physical. Not a notification you swipe away. Your screen literally loses its color. It's designed to feel wrong before you consciously register what's happening. By the time you notice the grayscale, you've already started to refocus.
 
-> **Three.** Privacy by architecture. All face processing happens client-side in the browser. No video frames ever leave the machine. The only external call is Claude parsing your session intent as plain text.
+### CLOSE (15s)
 
-> The name is Lunatic Eyes. From the Latin "luna." The moon. The thing that watches you whether you look at it or not.
+All face processing is client-side. No webcam frames leave the browser. The only external call is an AI parsing your typed intent as text.
 
-> Thank you.
+The name comes from the Latin "luna." The moon. The thing that watches you whether you look at it or not.
+
+Lunatic Eyes. Thank you.
 
 ---
 
-## Q&A Prep
+## REFINED PITCH (2 minutes, after Anthony's feedback)
+
+[Adjust based on what Anthony flags. Likely cuts:]
+- If he says "too much tech": cut the sub-score breakdown, just say "Focus Score" and "four biometric signals"
+- If he says "what's the market": add "Screen time is a $1.2B category. Every app in it tracks URLs. None of them track the user."
+- If he says "what's next": add "Next: external camera support for clinical-grade tracking, persistent analytics across sessions, and adaptive baselines that learn your attention patterns over time."
+- If he says "show me": have localhost:3000 ready, pre-calibrated
+
+### BACKUP 2-MIN VERSION (pre-written tight cut)
+
+You're three hours into a research session. You feel productive. Then you check screen time: 40 minutes was Twitter. You didn't choose to get distracted. You didn't notice.
+
+Lunatic Eyes watches your eyes through your webcam. You set a session intent: what you're here to do, what to block. It gives you a real-time Focus Score built from four biometric signals: gaze stability, engagement depth, screen presence, and alertness.
+
+When your score drops, the screen drains to grayscale. Your periphery darkens. If you keep drifting, blocked tabs close and it forces a break showing your biometric breakdown.
+
+[Point to key moment in video]
+
+This isn't screen time tracking. It's physiology. And the intervention isn't a notification you dismiss. Your screen physically changes. It's designed to feel wrong before you consciously notice.
+
+All processing is client-side. No frames leave the browser. Lunatic Eyes. Thank you.
+
+---
+
+## DEMO VIDEO RECORDING GUIDE
+
+### Setup
+1. Clean browser, no bookmarks bar, dark theme
+2. App running at localhost:3000
+3. Complete calibration before recording
+4. Have Twitter/X open in another tab ready to switch to
+5. Screen record full screen (QuickTime or OBS)
+
+### Shot list (aim for 60-90 seconds total)
+
+**Shot 1: Intent screen (5s)**
+Type: "Deep work on research paper. No social media."
+Show the policy parsing (block list populates).
+
+**Shot 2: Focused state (10s)**
+Read something on screen. Show sidebar: Focus Score green (70+), all bars green, state = FOCUSED.
+
+**Shot 3: Drift begins (10s)**
+Switch to Twitter. Scroll idly. Show Focus Score dropping, bars turning yellow.
+Grayscale starts creeping in. Vignette darkens edges.
+
+**Shot 4: Nudge fires (5s)**
+Toast appears bottom-right: "Drifting. Your attention is drifting."
+Screen at 60% grayscale.
+
+**Shot 5: Warning escalation (5s)**
+Screen fully gray + slight blur. Red warning banner across top.
+"Blocked tabs closed" message.
+
+**Shot 6: Force close / Break overlay (10s)**
+Full black screen. Breathing circle animating. "THE EYE INTERVENED."
+Show: Focus Score 23/100, Gaze Stability 12%, Alertness 45%.
+Diagnosis text: "Screen glazing detected..."
+
+**Shot 7: Dashboard (10s)**
+Scroll to dashboard after dismissing break.
+Show: hero focus score, sub-score bars, Focus Score Over Time chart, gaze heatmap.
+
+### Recording tips
+- Record in a well-lit room (MediaPipe needs light)
+- Don't narrate during recording (narrate live over the video during pitch)
+- Exaggerate the drift: look around, scroll fast, let eyes wander
+- If grayscale doesn't trigger fast enough, wait. Don't fake it.
+
+---
+
+## Q&A AMMO
 
 **"How accurate is webcam eye tracking?"**
-~130px accuracy, quadrant-level. Enough to distinguish reading fixation from scattered browsing. We're not tracking which word you read, we're tracking whether your eyes are stable or jumping. The biometric signals (blink rate, saccade speed) don't depend on pixel-perfect gaze.
+About 2-3 degrees, roughly 130 pixels. Quadrant-level, not word-level. But we're not tracking which word you read. We're tracking patterns: is your gaze stable or scattered? Are your blinks normal or suppressed? Those signals are robust even at low resolution.
 
-**"What if someone just looks away from the screen?"**
-MediaPipe loses the face. No landmarks, no classification. The system treats it as drifting. If you're away for 3+ seconds, nudge fires, blocked tabs close.
+**"What if someone looks away?"**
+Head pose estimation detects yaw and pitch. If you turn away for more than 2 seconds, the system classifies you as AWAY and starts the intervention ladder.
 
-**"Why not just use a Chrome extension?"**
-Chrome extensions track URLs. We track physiology. You can be on an allowed site and still be glazing. You can be on a blocked site and actually reading something important. The biometric layer adds a dimension that URL tracking can't.
-
-**"What's OpenClaw doing exactly?"**
-Three roles. First: browser tab control. It lists open tabs, identifies blocked URLs, closes them programmatically. Second: contextual message generation. The nudge and warning text are AI-generated, personalized to your stated goal and current biometrics. Third: it's the local agent runtime. No cloud dependency for the intervention pipeline.
+**"Why not just a Chrome extension?"**
+Chrome extensions track URLs. We track physiology. You can stare at a Google Doc for 20 minutes without reading a single word. A URL blocker thinks you're focused. We know you're not.
 
 **"What about false positives?"**
-Classification is generous toward locked-in by default. Only extreme signals trigger negative states. Glazed requires blink rate under 6/min with low variance. Distracted requires saccade speed over 1000px/s with variance over 500px. Normal reading stays locked-in even with natural eye movement.
+Classification defaults to FOCUSED with a 15-second warmup. States must persist through debounce windows: 6 seconds for drifting, 10 seconds for glazed. Normal reading, looking at your phone for a moment, adjusting in your chair -- none of that triggers intervention.
 
-**"Privacy concerns?"**
-Zero frames leave the browser. MediaPipe runs entirely in-browser via CDN WASM. No telemetry. No cloud processing of video. The only network call is Claude parsing your typed session intent as text. OpenClaw runs locally on the machine.
+**"What's the grayscale thing?"**
+Graduated intervention. Most focus apps give you a binary: blocked or not. We drain the color from your screen proportionally. At nudge level it's 60% grayscale with a darkened vignette. At warning it's full grayscale with blur. It's designed to create a visceral sense that something is wrong, before you consciously process what changed.
+
+**"Privacy?"**
+Zero frames leave the browser. MediaPipe runs entirely client-side via WebAssembly. No telemetry. No cloud processing of video. The only network call is AI parsing your typed session intent as text.
+
+**"What's the business model?"**
+[If asked] Freemium. Free for personal use with basic metrics. Pro tier for persistent analytics, custom intervention policies, and session history. Enterprise for workplace attention auditing with consent.
+
+**"Where does this go?"**
+[If asked] Three directions. One: external camera and dedicated eye tracker support for clinical-grade accuracy. Two: enterprise (voluntary attention auditing for remote teams, aggregate-only reporting). Three: clinical (ADHD screening, attention deficit quantification for therapists).
+
+**"Team?"**
+Built this at the Grayscale hackathon. I'm Amadeus Wu, CS/Data Science from NYU. Architecture, eye tracking pipeline, attention engine, and the biometric classification system are mine.
+
+**"What's the Focus Score?"**
+Weighted composite of four signals. Gaze Stability (35%): how scattered vs concentrated your eye movements are. Engagement Depth (30%): fixation duration and saccade structure, inspired by the K-coefficient from attention research. Screen Presence (25%): are you actually looking at the screen. Alertness (10%): blink rate relative to your personal baseline. All normalized to your own patterns after a 15-second warmup.

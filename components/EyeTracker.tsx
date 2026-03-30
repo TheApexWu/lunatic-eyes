@@ -5,8 +5,8 @@ import {
   drawFaceMesh,
   drawGazeDot,
   computeEAR,
-  computeIrisSize,
-  estimateGaze,
+  estimateHeadPose,
+  GazeTracker,
   LEFT_EYE,
   RIGHT_EYE,
   type GazeCalibration,
@@ -23,11 +23,13 @@ interface EyeTrackerProps {
   landmarksRef?: React.MutableRefObject<{ x: number; y: number }[] | null>;
 }
 
-const EAR_BLINK_THRESHOLD = 0.2;
+const EAR_BLINK_THRESHOLD = 0.25; // Raised from 0.2 to reduce false blink detections
+
+// Research-backed intervention thresholds (more generous than before)
 const INTERVENTION_THRESHOLDS = {
-  nudge: 3_000,
-  warning: 15_000,
-  force_close: 35_000,
+  nudge: 10_000,       // 10s (was 3s -- too aggressive)
+  warning: 30_000,     // 30s (was 15s)
+  force_close: 60_000, // 60s (was 35s)
 };
 
 export default function EyeTracker({
@@ -43,19 +45,14 @@ export default function EyeTracker({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gazeCanvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<AttentionEngine>(new AttentionEngine());
+  const gazeTrackerRef = useRef<GazeTracker>(new GazeTracker());
   const faceMeshRef = useRef<any>(null);
   const animFrameRef = useRef<number>(0);
-  const stateStartRef = useRef<{ state: AttentionState; since: number }>({
-    state: "locked-in",
-    since: Date.now(),
-  });
   const [cameraReady, setCameraReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const showMeshRef = useRef(showMesh);
   const blinkOpenRef = useRef(true);
   const lastGazePostRef = useRef(0);
-  const smoothGazeRef = useRef<{ x: number; y: number } | null>(null);
-  const SMOOTHING = 0.35; // lower = smoother, higher = more responsive
   const calibrationRef = useRef<GazeCalibration | null>(calibration);
   const onGazeUpdateRef = useRef(onGazeUpdate);
   const onMetricsUpdateRef = useRef(onMetricsUpdate);
@@ -64,14 +61,14 @@ export default function EyeTracker({
   // Keep refs synced
   showMeshRef.current = showMesh;
   if (calibrationRef.current !== calibration) {
-    smoothGazeRef.current = null; // reset smooth gaze on recalibration
+    gazeTrackerRef.current.reset(); // reset filter on recalibration
   }
   calibrationRef.current = calibration;
   onGazeUpdateRef.current = onGazeUpdate;
   onMetricsUpdateRef.current = onMetricsUpdate;
   onInterventionRef.current = onIntervention;
 
-  // Camera init -- gated behind START
+  // Camera init
   useEffect(() => {
     if (!active) return;
 
@@ -149,8 +146,8 @@ export default function EyeTracker({
         faceMesh.setOptions({
           maxNumFaces: 1,
           refineLandmarks: true,
-          minDetectionConfidence: 0.5,
-          minTrackingConfidence: 0.5,
+          minDetectionConfidence: 0.7, // Raised from 0.5
+          minTrackingConfidence: 0.7,  // Raised from 0.5
         });
 
         faceMesh.onResults((results: any) => {
@@ -158,7 +155,6 @@ export default function EyeTracker({
           if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) return;
 
           const landmarks = results.multiFaceLandmarks[0];
-          // Expose landmarks for calibration component
           if (externalLandmarksRef) externalLandmarksRef.current = landmarks;
           const canvas = canvasRef.current;
           if (!canvas) return;
@@ -173,7 +169,7 @@ export default function EyeTracker({
             ctx.clearRect(0, 0, canvas.width, canvas.height);
           }
 
-          // Blink detection with edge detection
+          // Blink detection
           const leftEAR = computeEAR(landmarks, LEFT_EYE);
           const rightEAR = computeEAR(landmarks, RIGHT_EYE);
           const avgEAR = (leftEAR + rightEAR) / 2;
@@ -187,41 +183,34 @@ export default function EyeTracker({
             blinkOpenRef.current = true;
           }
 
-          // Iris size
-          const irisSize = computeIrisSize(landmarks, canvas.width, canvas.height);
-          engineRef.current.setIrisSize(irisSize);
+          // Head pose estimation (real values, not hardcoded zeros)
+          const headPose = estimateHeadPose(landmarks);
+          engineRef.current.setHeadPose(headPose);
 
-          // Gaze estimation from iris position (use full screen, not just browser)
+          // Gaze estimation (single smoothing via 1-Euro filter inside GazeTracker)
           const screenW = typeof window !== "undefined" ? screen.width : 1920;
           const screenH = typeof window !== "undefined" ? screen.height : 1080;
-          const gaze = estimateGaze(landmarks, screenW, screenH, calibrationRef.current ?? undefined);
+          const gaze = gazeTrackerRef.current.estimateGaze(
+            landmarks, screenW, screenH, calibrationRef.current ?? undefined
+          );
 
           if (gaze) {
-            // EMA smoothing
-            if (!smoothGazeRef.current) {
-              smoothGazeRef.current = { x: gaze.x, y: gaze.y };
-            } else {
-              smoothGazeRef.current.x += SMOOTHING * (gaze.x - smoothGazeRef.current.x);
-              smoothGazeRef.current.y += SMOOTHING * (gaze.y - smoothGazeRef.current.y);
-            }
-            const sx = smoothGazeRef.current.x;
-            const sy = smoothGazeRef.current.y;
-
+            // NO second smoothing layer. GazeTracker handles it.
             const point: GazePoint = {
-              x: sx,
-              y: sy,
+              x: gaze.x,
+              y: gaze.y,
               timestamp: Date.now(),
             };
             engineRef.current.addGaze(point);
             onGazeUpdateRef.current(point);
 
-            // Draw gaze dot in browser overlay
+            // Draw gaze dot
             const gazeCanvas = gazeCanvasRef.current;
             if (gazeCanvas) {
               const gctx = gazeCanvas.getContext("2d");
               if (gctx) {
                 gctx.clearRect(0, 0, gazeCanvas.width, gazeCanvas.height);
-                drawGazeDot(gctx, sx, sy);
+                drawGazeDot(gctx, gaze.x, gaze.y);
               }
             }
 
@@ -232,7 +221,7 @@ export default function EyeTracker({
               fetch("/api/gaze", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ x: sx, y: sy }),
+                body: JSON.stringify({ x: gaze.x, y: gaze.y }),
               }).catch(() => {});
             }
           }
@@ -245,13 +234,9 @@ export default function EyeTracker({
             const state = engineRef.current.classify(metrics);
             onMetricsUpdateRef.current(metrics, state);
 
-            if (state !== stateStartRef.current.state) {
-              stateStartRef.current = { state, since: now };
-            }
+            // Intervention escalation based on time in non-focused state
+            const duration = engineRef.current.getStateDuration();
 
-            const duration = now - stateStartRef.current.since;
-
-            // Any non-locked-in state escalates through the full ladder
             if (state !== "locked-in" && duration > INTERVENTION_THRESHOLDS.force_close) {
               onInterventionRef.current("force_close");
             } else if (state !== "locked-in" && duration > INTERVENTION_THRESHOLDS.warning) {
@@ -278,7 +263,7 @@ export default function EyeTracker({
     };
   }, [cameraReady]);
 
-  // Animation loop -- sends video frames to FaceMesh
+  // Animation loop
   useEffect(() => {
     if (!active || !cameraReady) return;
 
@@ -327,7 +312,6 @@ export default function EyeTracker({
         style={{ transform: "scaleX(-1)", display: showMesh ? "block" : "none" }}
       />
 
-      {/* Full-screen gaze dot overlay -- always visible */}
       <canvas
         ref={gazeCanvasRef}
         width={typeof window !== "undefined" ? window.innerWidth : 1920}

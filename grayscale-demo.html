@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lunatic Eyes - Intervention Demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0a; color: #e4e4e7; font-family: -apple-system, sans-serif; overflow-x: hidden; }
+
+  /* Sample content to show the effect on */
+  .content {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 3rem 2rem;
+  }
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+  }
+  .logo { color: #dc2626; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+  .fake-content {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 2rem;
+  }
+  .main-area { space-y: 1rem; }
+  .card {
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .card h3 { color: #e4e4e7; font-size: 0.9rem; margin-bottom: 0.5rem; }
+  .card p { color: #71717a; font-size: 0.85rem; line-height: 1.6; }
+  .sidebar .card { padding: 1rem; }
+  .metric-label { color: #71717a; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; }
+  .metric-value { color: #22c55e; font-size: 2rem; font-weight: 700; }
+  .bar-track { height: 6px; background: #27272a; border-radius: 3px; margin: 0.5rem 0; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 2s, background 2s; }
+  .img-placeholder {
+    background: linear-gradient(135deg, #1e3a5f, #2d1b4e, #4a1942);
+    border-radius: 8px;
+    height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #71717a;
+    font-size: 0.8rem;
+    margin-bottom: 1rem;
+  }
+
+  /* INTERVENTION LAYERS */
+  .grayscale-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 45;
+    pointer-events: none;
+    transition: backdrop-filter 2s ease, -webkit-backdrop-filter 2s ease;
+    backdrop-filter: grayscale(0) blur(0px);
+    -webkit-backdrop-filter: grayscale(0) blur(0px);
+  }
+  .vignette-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 46;
+    pointer-events: none;
+    transition: box-shadow 2s ease;
+    box-shadow: inset 0 0 0px rgba(0,0,0,0);
+  }
+  .nudge-toast {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 50;
+    background: rgba(10,10,10,0.95);
+    border: 1px solid rgba(220,38,38,0.6);
+    color: #e4e4e7;
+    padding: 1rem 1.25rem;
+    border-radius: 12px;
+    max-width: 320px;
+    font-size: 0.9rem;
+    box-shadow: 0 8px 32px rgba(220,38,38,0.1);
+    backdrop-filter: blur(8px);
+    transform: translateY(120%);
+    transition: transform 0.5s ease;
+  }
+  .nudge-toast .label { color: #dc2626; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.25rem; }
+  .warning-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: rgba(220,38,38,0.9);
+    color: white;
+    text-align: center;
+    padding: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    transform: translateY(-100%);
+    transition: transform 0.5s ease;
+  }
+  .break-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: black;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.8s ease;
+  }
+  .break-overlay.active { opacity: 1; pointer-events: auto; }
+  .break-content { text-align: center; max-width: 480px; padding: 2rem; }
+  .break-title { color: #dc2626; font-size: 2.5rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 1.5rem; }
+  .breath-circle {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 2px solid rgba(220,38,38,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1rem;
+    transition: transform 1s ease;
+  }
+  .breath-inner { width: 32px; height: 32px; border-radius: 50%; background: rgba(220,38,38,0.3); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 0.3; } 50% { opacity: 0.7; } }
+  .breath-label { color: #71717a; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 2rem; }
+  .break-metrics {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin: 1.5rem 0;
+  }
+  .break-metric {
+    background: #0a0a0a;
+    border: 1px solid #27272a;
+    border-radius: 8px;
+    padding: 0.75rem;
+    text-align: left;
+  }
+  .break-metric .label { color: #71717a; font-size: 0.65rem; text-transform: uppercase; }
+  .break-metric .value { font-size: 1.25rem; font-weight: 700; }
+  .break-metric .value.bad { color: #dc2626; }
+  .break-metric .value.ok { color: #e4e4e7; }
+  .diagnosis { color: #a1a1aa; font-size: 0.85rem; line-height: 1.6; margin: 1rem 0; }
+  .dismiss-btn {
+    background: #18181b;
+    border: 1px solid #3f3f46;
+    color: #d4d4d8;
+    padding: 0.75rem 2rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    margin-top: 1rem;
+    transition: border-color 0.3s;
+  }
+  .dismiss-btn:hover { border-color: #dc2626; }
+
+  /* CONTROLS */
+  .controls {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    background: #18181b;
+    border-top: 1px solid #27272a;
+    padding: 1rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    justify-content: center;
+  }
+  .controls button {
+    padding: 0.5rem 1.25rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #3f3f46;
+    background: #27272a;
+    color: #d4d4d8;
+    transition: all 0.2s;
+  }
+  .controls button:hover { border-color: #dc2626; color: #fff; }
+  .controls button.active { background: #dc2626; border-color: #dc2626; color: #fff; }
+  .controls .label { color: #71717a; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
+
+<!-- INTERVENTION LAYERS -->
+<div class="grayscale-overlay" id="grayscale"></div>
+<div class="vignette-overlay" id="vignette"></div>
+<div class="nudge-toast" id="toast">
+  <div class="label">Drifting</div>
+  Your attention is drifting. Refocus.
+</div>
+<div class="warning-banner" id="banner">YOUR EYES ARE GLAZING</div>
+<div class="break-overlay" id="breakOverlay">
+  <div class="break-content">
+    <div class="breath-circle" id="breathCircle">
+      <div class="breath-inner"></div>
+    </div>
+    <div class="breath-label" id="breathLabel">Breathe in (4)</div>
+    <div class="break-title">THE EYE INTERVENED</div>
+    <p class="diagnosis">Screen glazing detected. Your eyes were locked in place without cognitive engagement. The stare without the processing.</p>
+    <div class="break-metrics">
+      <div class="break-metric"><div class="label">Focus Score</div><div class="value bad">23/100</div></div>
+      <div class="break-metric"><div class="label">Gaze Stability</div><div class="value ok">12%</div></div>
+      <div class="break-metric"><div class="label">Engagement</div><div class="value bad">8%</div></div>
+      <div class="break-metric"><div class="label">Alertness</div><div class="value ok">45%</div></div>
+    </div>
+    <button class="dismiss-btn" onclick="setState('none')">I'm ready to refocus</button>
+  </div>
+</div>
+
+<!-- FAKE APP CONTENT -->
+<div class="content" style="padding-bottom: 5rem;">
+  <div class="header">
+    <div class="logo">LUNATIC EYES</div>
+    <div style="color: #71717a; font-size: 0.8rem;">Deep work on research paper. No social media.</div>
+  </div>
+
+  <div class="fake-content">
+    <div class="main-area">
+      <div class="img-placeholder">[ webcam feed ]</div>
+      <div class="card">
+        <h3>Research: Attention Metrics in HCI</h3>
+        <p>The K-coefficient, introduced by Krejtz et al. (2016), provides a quantitative measure of the transition between ambient and focal attention modes. By combining fixation duration with saccade amplitude, the coefficient captures whether a viewer is scanning broadly or processing deeply.</p>
+      </div>
+      <div class="card">
+        <h3>Notes</h3>
+        <p>Ambient attention: short fixations, long saccades. Focal attention: long fixations, short saccades. The transition between these modes is what distinguishes active reading from passive scrolling.</p>
+      </div>
+      <div class="card">
+        <h3>Related Work</h3>
+        <p>Duchowski et al. proposed using entropy-based metrics derived from gaze transitions as a measure of cognitive load. Higher entropy correlates with exploration; lower entropy correlates with focused processing.</p>
+      </div>
+    </div>
+    <div class="sidebar">
+      <div class="card">
+        <div class="metric-label">Focus Score</div>
+        <div class="metric-value" id="scoreDisplay">82</div>
+      </div>
+      <div class="card">
+        <div class="metric-label">Gaze Stability</div>
+        <div class="bar-track"><div class="bar-fill" id="bar1" style="width:78%;background:#22c55e;"></div></div>
+      </div>
+      <div class="card">
+        <div class="metric-label">Engagement</div>
+        <div class="bar-track"><div class="bar-fill" id="bar2" style="width:71%;background:#22c55e;"></div></div>
+      </div>
+      <div class="card">
+        <div class="metric-label">Screen Presence</div>
+        <div class="bar-track"><div class="bar-fill" id="bar3" style="width:95%;background:#22c55e;"></div></div>
+      </div>
+      <div class="card">
+        <div class="metric-label">Alertness</div>
+        <div class="bar-track"><div class="bar-fill" id="bar4" style="width:80%;background:#22c55e;"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CONTROL BAR -->
+<div class="controls">
+  <span class="label">Intervention Level:</span>
+  <button id="btn-none" class="active" onclick="setState('none')">None (Focused)</button>
+  <button id="btn-nudge" onclick="setState('nudge')">Nudge (10s drift)</button>
+  <button id="btn-warning" onclick="setState('warning')">Warning (30s drift)</button>
+  <button id="btn-force" onclick="setState('force_close')">Force Close (60s)</button>
+</div>
+
+<script>
+let currentState = 'none';
+
+function setState(level) {
+  currentState = level;
+
+  // Reset all buttons
+  document.querySelectorAll('.controls button').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + (level === 'force_close' ? 'force' : level)).classList.add('active');
+
+  const gs = document.getElementById('grayscale');
+  const vig = document.getElementById('vignette');
+  const toast = document.getElementById('toast');
+  const banner = document.getElementById('banner');
+  const breakEl = document.getElementById('breakOverlay');
+
+  // Reset everything
+  gs.style.backdropFilter = 'grayscale(0) blur(0px)';
+  gs.style.webkitBackdropFilter = 'grayscale(0) blur(0px)';
+  vig.style.boxShadow = 'inset 0 0 0px rgba(0,0,0,0)';
+  toast.style.transform = 'translateY(120%)';
+  banner.style.transform = 'translateY(-100%)';
+  breakEl.classList.remove('active');
+
+  // Update fake metrics
+  updateMetrics(level);
+
+  if (level === 'none') return;
+
+  // Small delay so transitions are visible
+  requestAnimationFrame(() => {
+    if (level === 'nudge') {
+      gs.style.backdropFilter = 'grayscale(0.6) blur(0px)';
+      gs.style.webkitBackdropFilter = 'grayscale(0.6) blur(0px)';
+      vig.style.boxShadow = 'inset 0 0 120px rgba(0,0,0,0.5)';
+      toast.style.transform = 'translateY(0)';
+    }
+    else if (level === 'warning') {
+      gs.style.backdropFilter = 'grayscale(1.0) blur(2px)';
+      gs.style.webkitBackdropFilter = 'grayscale(1.0) blur(2px)';
+      vig.style.boxShadow = 'inset 0 0 200px rgba(0,0,0,0.85)';
+      banner.style.transform = 'translateY(0)';
+    }
+    else if (level === 'force_close') {
+      breakEl.classList.add('active');
+    }
+  });
+}
+
+function updateMetrics(level) {
+  const score = document.getElementById('scoreDisplay');
+  const bars = [
+    document.getElementById('bar1'),
+    document.getElementById('bar2'),
+    document.getElementById('bar3'),
+    document.getElementById('bar4'),
+  ];
+
+  if (level === 'none') {
+    score.textContent = '82';
+    score.style.color = '#22c55e';
+    setBar(bars[0], 78, '#22c55e');
+    setBar(bars[1], 71, '#22c55e');
+    setBar(bars[2], 95, '#22c55e');
+    setBar(bars[3], 80, '#22c55e');
+  } else if (level === 'nudge') {
+    score.textContent = '48';
+    score.style.color = '#eab308';
+    setBar(bars[0], 42, '#eab308');
+    setBar(bars[1], 35, '#eab308');
+    setBar(bars[2], 70, '#22c55e');
+    setBar(bars[3], 55, '#eab308');
+  } else if (level === 'warning') {
+    score.textContent = '28';
+    score.style.color = '#dc2626';
+    setBar(bars[0], 18, '#ef4444');
+    setBar(bars[1], 15, '#ef4444');
+    setBar(bars[2], 50, '#eab308');
+    setBar(bars[3], 40, '#eab308');
+  } else {
+    score.textContent = '23';
+    score.style.color = '#dc2626';
+    setBar(bars[0], 12, '#ef4444');
+    setBar(bars[1], 8, '#ef4444');
+    setBar(bars[2], 35, '#ef4444');
+    setBar(bars[3], 45, '#eab308');
+  }
+}
+
+function setBar(el, pct, color) {
+  el.style.width = pct + '%';
+  el.style.background = color;
+}
+
+// Breathing animation
+let breathPhase = 'inhale';
+let breathTimer = 4;
+const breathDurations = { inhale: 4, hold: 7, exhale: 8 };
+const breathNext = { inhale: 'hold', hold: 'exhale', exhale: 'inhale' };
+const breathLabels = { inhale: 'Breathe in', hold: 'Hold', exhale: 'Breathe out' };
+
+setInterval(() => {
+  breathTimer--;
+  if (breathTimer <= 0) {
+    breathPhase = breathNext[breathPhase];
+    breathTimer = breathDurations[breathPhase];
+  }
+  const circle = document.getElementById('breathCircle');
+  const label = document.getElementById('breathLabel');
+  if (circle && label) {
+    circle.style.transform = breathPhase === 'exhale' ? 'scale(0.75)' : 'scale(1.25)';
+    label.textContent = breathLabels[breathPhase] + ' (' + breathTimer + ')';
+  }
+}, 1000);
+</script>
+</body>
+</html>

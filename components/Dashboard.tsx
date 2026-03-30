@@ -2,8 +2,6 @@
 
 import { useMemo } from "react";
 import {
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -27,24 +25,26 @@ interface DashboardProps {
   stateHistory?: StateEntry[];
 }
 
-function computeFocusScore(metrics: AttentionMetrics | null, gazeHistory: GazePoint[]): number {
-  if (!metrics || gazeHistory.length < 30) return 0;
+// Sub-score progress bar component
+function ScoreBar({ label, value, description }: { label: string; value: number; description: string }) {
+  const color = value >= 70 ? "bg-green-500" : value >= 40 ? "bg-yellow-500" : "bg-red-500";
+  const textColor = value >= 70 ? "text-green-400" : value >= 40 ? "text-yellow-400" : "text-crimson";
 
-  // Fixation score: longer fixations = better focus (max ~5000ms)
-  const fixScore = Math.min(metrics.fixationDuration / 5000, 1) * 30;
-
-  // Blink rate score: 15-20/min is optimal, penalize extremes
-  const blinkOptimal = metrics.blinkRate >= 10 && metrics.blinkRate <= 25;
-  const blinkScore = blinkOptimal ? 20 : Math.max(0, 20 - Math.abs(metrics.blinkRate - 17) * 2);
-
-  // Variance score: lower = more focused (inverse, max ~300px)
-  const varScore = Math.max(0, 30 - (metrics.gazeVariance / 300) * 30);
-
-  // Saccade score: moderate speed = good (too fast = scanning, too slow = glazing)
-  const saccOptimal = metrics.saccadeSpeed >= 50 && metrics.saccadeSpeed <= 300;
-  const saccScore = saccOptimal ? 20 : Math.max(0, 20 - Math.abs(metrics.saccadeSpeed - 175) / 20);
-
-  return Math.round(Math.min(100, fixScore + blinkScore + varScore + saccScore));
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between items-baseline">
+        <span className="text-xs text-zinc-400 uppercase tracking-wider">{label}</span>
+        <span className={`text-sm font-bold ${textColor}`}>{value}</span>
+      </div>
+      <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${color}`}
+          style={{ width: `${Math.max(2, value)}%` }}
+        />
+      </div>
+      <p className="text-xs text-zinc-600">{description}</p>
+    </div>
+  );
 }
 
 function computeStateStats(stateHistory: StateEntry[]) {
@@ -53,7 +53,7 @@ function computeStateStats(stateHistory: StateEntry[]) {
   const totalDuration = stateHistory[stateHistory.length - 1].timestamp - stateHistory[0].timestamp;
   if (totalDuration <= 0) return null;
 
-  const durations: Record<string, number> = { "locked-in": 0, drifting: 0, glazed: 0, distracted: 0 };
+  const durations: Record<string, number> = { "locked-in": 0, drifting: 0, glazed: 0, away: 0 };
   let transitions = 0;
   let longestFocus = 0;
   let currentFocusStreak = 0;
@@ -72,7 +72,7 @@ function computeStateStats(stateHistory: StateEntry[]) {
         longestFocus = Math.max(longestFocus, currentFocusStreak);
         currentFocusStreak = 0;
       }
-      if (curr.state === "distracted" || curr.state === "glazed") {
+      if (curr.state === "away" || curr.state === "glazed") {
         distractionCount++;
       }
     }
@@ -96,49 +96,50 @@ function computeStateStats(stateHistory: StateEntry[]) {
 }
 
 function generateAssessment(
-  focusScore: number,
-  stateStats: ReturnType<typeof computeStateStats>,
   metrics: AttentionMetrics | null,
+  stateStats: ReturnType<typeof computeStateStats>,
 ): string {
+  if (!metrics) return "";
   const lines: string[] = [];
+  const score = metrics.focusScore;
 
-  if (focusScore >= 80) {
-    lines.push("Strong focus session. Your gaze remained stable with consistent fixation patterns.");
-  } else if (focusScore >= 60) {
+  if (score >= 80) {
+    lines.push("Strong focus session. Gaze stable, fixation patterns consistent.");
+  } else if (score >= 60) {
     lines.push("Moderate focus. Some drift detected but attention recovered.");
-  } else if (focusScore >= 40) {
-    lines.push("Below average focus. Frequent gaze drift and irregular fixation patterns.");
+  } else if (score >= 40) {
+    lines.push("Below average. Frequent gaze drift, irregular fixation patterns.");
   } else {
-    lines.push("Poor focus session. High gaze variance suggests sustained distraction.");
+    lines.push("Poor focus. High gaze scatter suggests sustained disengagement.");
   }
 
   if (stateStats) {
     if (stateStats.focusRatio >= 70) {
-      lines.push(`Locked in ${stateStats.focusRatio}% of the session.`);
+      lines.push(`Focused ${stateStats.focusRatio}% of the session.`);
     } else if (stateStats.focusRatio >= 40) {
-      lines.push(`Only locked in ${stateStats.focusRatio}% of session time. ${stateStats.distractionCount} distraction episodes detected.`);
+      lines.push(`Only focused ${stateStats.focusRatio}% of the time. ${stateStats.distractionCount} episodes detected.`);
     } else {
-      lines.push(`Locked in just ${stateStats.focusRatio}% of the time. ${stateStats.distractionCount} distraction episodes across ${stateStats.transitions} state changes.`);
+      lines.push(`Focused just ${stateStats.focusRatio}%. ${stateStats.distractionCount} episodes across ${stateStats.transitions} state changes.`);
     }
 
     if (stateStats.longestFocusStreak > 0) {
-      lines.push(`Peak focus streak: ${stateStats.longestFocusStreak}s.`);
+      lines.push(`Peak streak: ${stateStats.longestFocusStreak}s.`);
     }
   }
 
-  if (metrics) {
-    if (metrics.blinkRate < 10) {
-      lines.push("Low blink rate detected (possible screen glazing or eye fatigue).");
-    } else if (metrics.blinkRate > 30) {
-      lines.push("Elevated blink rate (possible stress or dry eyes).");
-    }
-
-    if (metrics.gazeVariance > 200) {
-      lines.push("High gaze scatter indicates rapid context-switching across screen regions.");
-    }
+  if (metrics.alertness < 40) {
+    lines.push("Low alertness detected. Consider taking a break.");
   }
 
   return lines.join(" ");
+}
+
+function formatStreak(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}m ${sec}s`;
 }
 
 export default function Dashboard({
@@ -147,23 +148,23 @@ export default function Dashboard({
   attentionState,
   stateHistory = [],
 }: DashboardProps) {
-  const focusScore = useMemo(() => computeFocusScore(metrics, gazeHistory), [metrics, gazeHistory]);
   const stateStats = useMemo(() => computeStateStats(stateHistory), [stateHistory]);
   const assessment = useMemo(
-    () => generateAssessment(focusScore, stateStats, metrics),
-    [focusScore, stateStats, metrics],
+    () => generateAssessment(metrics, stateStats),
+    [metrics, stateStats],
   );
 
+  // Timeline data: focus score over time from metrics history
   const timelineData = useMemo(() => {
     if (gazeHistory.length < 30) return [];
 
-    const data: { time: number; variance: number; speed: number; focusScore: number }[] = [];
+    const data: { time: number; focusScore: number; stability: number }[] = [];
     const sampleRate = 30;
 
     for (let i = sampleRate; i < gazeHistory.length; i += sampleRate) {
-      const window = gazeHistory.slice(i - sampleRate, i);
-      const xs = window.map((p) => p.x);
-      const ys = window.map((p) => p.y);
+      const windowPts = gazeHistory.slice(i - sampleRate, i);
+      const xs = windowPts.map((p) => p.x);
+      const ys = windowPts.map((p) => p.y);
 
       const meanX = xs.reduce((a, b) => a + b, 0) / xs.length;
       const meanY = ys.reduce((a, b) => a + b, 0) / ys.length;
@@ -172,32 +173,25 @@ export default function Dashboard({
           ys.reduce((s, y) => s + (y - meanY) ** 2, 0) / ys.length,
       );
 
-      let totalSpeed = 0;
-      for (let j = 1; j < window.length; j++) {
-        const dx = window[j].x - window[j - 1].x;
-        const dy = window[j].y - window[j - 1].y;
-        const dt = (window[j].timestamp - window[j - 1].timestamp) / 1000;
-        if (dt > 0) totalSpeed += Math.hypot(dx, dy) / dt;
-      }
+      const elapsed = (windowPts[windowPts.length - 1].timestamp - gazeHistory[0].timestamp) / 1000;
 
-      const elapsed = (window[window.length - 1].timestamp - gazeHistory[0].timestamp) / 1000;
+      // Stability score: inverted variance, normalized
+      const stability = Math.max(0, Math.min(100, 100 - (variance / 300) * 100));
 
-      // Window-level focus score approximation
-      const varScore = Math.max(0, 30 - (variance / 300) * 30);
-      const speedAvg = totalSpeed / (window.length - 1);
-      const speedScore = speedAvg >= 50 && speedAvg <= 300 ? 20 : Math.max(0, 20 - Math.abs(speedAvg - 175) / 20);
-      const windowScore = Math.round(Math.min(100, varScore + speedScore + 50));
+      // Use the engine's focus score if available, otherwise approximate
+      const focusScore = metrics
+        ? Math.round(stability * 0.6 + 40 * (metrics.screenPresence / 100))
+        : Math.round(stability);
 
       data.push({
         time: Math.round(elapsed),
-        variance: Math.round(variance),
-        speed: Math.round(totalSpeed / (window.length - 1)),
-        focusScore: windowScore,
+        focusScore: Math.min(100, focusScore),
+        stability: Math.round(stability),
       });
     }
 
     return data;
-  }, [gazeHistory]);
+  }, [gazeHistory, metrics]);
 
   if (gazeHistory.length < 30) {
     return (
@@ -209,80 +203,107 @@ export default function Dashboard({
     );
   }
 
+  const focusScore = metrics?.focusScore ?? 0;
+
   const scoreColor =
     focusScore >= 70 ? "text-green-400" :
-    focusScore >= 45 ? "text-yellow-400" :
+    focusScore >= 40 ? "text-yellow-400" :
     "text-crimson";
+
+  const scoreBorder =
+    focusScore >= 70 ? "border-green-500/30" :
+    focusScore >= 40 ? "border-yellow-500/30" :
+    "border-crimson/30";
+
+  const stateColor =
+    attentionState === "locked-in" ? "text-green-400" :
+    attentionState === "drifting" ? "text-yellow-400" :
+    attentionState === "glazed" ? "text-orange-400" :
+    "text-crimson";
+
+  const stateLabel =
+    attentionState === "locked-in" ? "FOCUSED" :
+    attentionState === "away" ? "AWAY" :
+    attentionState.toUpperCase();
 
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-bold text-zinc-200">Attention Dashboard</h2>
 
-      {/* Top row: Focus Score + State Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-center">
+      {/* LAYER 1: Hero focus score + key stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* Big focus score */}
+        <div className={`bg-zinc-950 border ${scoreBorder} rounded-xl p-6 text-center col-span-2 lg:col-span-1`}>
           <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Focus Score</div>
-          <div className={`text-4xl font-bold ${scoreColor}`}>{focusScore}</div>
+          <div className={`text-5xl font-bold ${scoreColor}`}>{focusScore}</div>
           <div className="text-xs text-zinc-600 mt-1">/100</div>
         </div>
 
         <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-center">
-          <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Focus Ratio</div>
-          <div className="text-4xl font-bold text-zinc-200">
-            {stateStats ? `${stateStats.focusRatio}%` : "--"}
-          </div>
-          <div className="text-xs text-zinc-600 mt-1">time locked-in</div>
+          <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">State</div>
+          <div className={`text-2xl font-bold ${stateColor}`}>{stateLabel}</div>
         </div>
 
         <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-center">
-          <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Peak Streak</div>
-          <div className="text-4xl font-bold text-zinc-200">
-            {stateStats ? `${stateStats.longestFocusStreak}s` : "--"}
+          <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">On-Screen</div>
+          <div className="text-2xl font-bold text-zinc-200">
+            {metrics ? `${Math.round(metrics.onScreenRatio * 100)}%` : "--"}
           </div>
-          <div className="text-xs text-zinc-600 mt-1">longest focus</div>
         </div>
 
         <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-center">
-          <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Distractions</div>
-          <div className="text-4xl font-bold text-crimson">
-            {stateStats ? stateStats.distractionCount : "--"}
+          <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Focus Streak</div>
+          <div className="text-2xl font-bold text-zinc-200">
+            {metrics ? formatStreak(metrics.focusStreak) : "--"}
           </div>
-          <div className="text-xs text-zinc-600 mt-1">episodes</div>
+        </div>
+
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-center">
+          <div className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Drift Events</div>
+          <div className="text-2xl font-bold text-crimson">
+            {metrics ? metrics.distractionEvents : "--"}
+          </div>
         </div>
       </div>
 
-      {/* Assessment */}
-      <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5">
-        <h3 className="text-xs text-crimson uppercase tracking-wider mb-3">Session Assessment</h3>
-        <p className="text-zinc-300 text-sm leading-relaxed">{assessment}</p>
-      </div>
-
-      {/* Biometric cards */}
+      {/* LAYER 2: Sub-scores (WHOOP model) */}
       {metrics && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-            <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Fixation</div>
-            <div className="text-xl font-bold text-zinc-200">{metrics.fixationDuration.toFixed(0)}ms</div>
-            <div className="text-xs text-zinc-600 mt-1">normal: 200-600ms</div>
-          </div>
-          <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-            <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Blink Rate</div>
-            <div className="text-xl font-bold text-zinc-200">{metrics.blinkRate.toFixed(1)}/min</div>
-            <div className="text-xs text-zinc-600 mt-1">normal: 15-20/min</div>
-          </div>
-          <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-            <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Gaze Variance</div>
-            <div className="text-xl font-bold text-zinc-200">{metrics.gazeVariance.toFixed(0)}px</div>
-            <div className="text-xs text-zinc-600 mt-1">lower = more focused</div>
-          </div>
-          <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-            <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Saccade Speed</div>
-            <div className="text-xl font-bold text-zinc-200">{metrics.saccadeSpeed.toFixed(0)}px/s</div>
-            <div className="text-xs text-zinc-600 mt-1">normal: 50-300px/s</div>
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5">
+          <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-4">Contributing Factors</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <ScoreBar
+              label="Gaze Stability"
+              value={metrics.gazeStability}
+              description={metrics.gazeStability >= 70 ? "Concentrated gaze pattern" : metrics.gazeStability >= 40 ? "Some scatter detected" : "Eyes jumping across screen"}
+            />
+            <ScoreBar
+              label="Engagement Depth"
+              value={metrics.engagementDepth}
+              description={metrics.engagementDepth >= 70 ? "Deep processing detected" : metrics.engagementDepth >= 40 ? "Surface-level scanning" : "Unfocused browsing"}
+            />
+            <ScoreBar
+              label="Screen Presence"
+              value={metrics.screenPresence}
+              description={metrics.screenPresence >= 95 ? "Looking at screen" : metrics.screenPresence >= 70 ? "Occasional glances away" : "Frequently looking away"}
+            />
+            <ScoreBar
+              label="Alertness"
+              value={metrics.alertness}
+              description={metrics.alertness >= 70 ? "Alert and responsive" : metrics.alertness >= 40 ? "Slightly fatigued" : "Signs of fatigue"}
+            />
           </div>
         </div>
       )}
 
+      {/* Assessment */}
+      {assessment && (
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5">
+          <h3 className="text-xs text-crimson uppercase tracking-wider mb-3">Session Assessment</h3>
+          <p className="text-zinc-300 text-sm leading-relaxed">{assessment}</p>
+        </div>
+      )}
+
+      {/* LAYER 3: Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
           <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-3">
@@ -334,16 +355,16 @@ export default function Dashboard({
           </ResponsiveContainer>
         </div>
 
-        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
+        <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 lg:col-span-2">
           <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-3">
-            Gaze Variance Over Time
+            Gaze Stability Over Time
           </h3>
           <ResponsiveContainer width="100%" height={250}>
             <AreaChart data={timelineData}>
               <defs>
-                <linearGradient id="varianceGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#DC143C" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#DC143C" stopOpacity={0} />
+                <linearGradient id="stabilityGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
@@ -355,6 +376,7 @@ export default function Dashboard({
               <YAxis
                 stroke="#52525b"
                 tick={{ fill: "#71717a", fontSize: 11 }}
+                domain={[0, 100]}
               />
               <Tooltip
                 contentStyle={{
@@ -366,70 +388,35 @@ export default function Dashboard({
               />
               <Area
                 type="monotone"
-                dataKey="variance"
-                stroke="#DC143C"
-                fill="url(#varianceGrad)"
+                dataKey="stability"
+                stroke="#3b82f6"
+                fill="url(#stabilityGrad)"
                 strokeWidth={2}
               />
             </AreaChart>
           </ResponsiveContainer>
         </div>
+      </div>
 
+      {/* Session stats footer */}
+      {stateStats && (
         <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-          <h3 className="text-xs text-zinc-500 uppercase tracking-wider mb-3">
-            Saccade Speed Over Time
-          </h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={timelineData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-              <XAxis
-                dataKey="time"
-                stroke="#52525b"
-                tick={{ fill: "#71717a", fontSize: 11 }}
-              />
-              <YAxis
-                stroke="#52525b"
-                tick={{ fill: "#71717a", fontSize: 11 }}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "#18181b",
-                  border: "1px solid #27272a",
-                  borderRadius: "8px",
-                  color: "#e4e4e7",
-                }}
-              />
-              <Line
-                type="monotone"
-                dataKey="speed"
-                stroke="#FF0000"
-                strokeWidth={2}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          <div className="grid grid-cols-3 gap-4 text-center text-sm">
+            <div>
+              <div className="text-zinc-500 text-xs uppercase">Focus Ratio</div>
+              <div className="text-zinc-200 font-bold">{stateStats.focusRatio}%</div>
+            </div>
+            <div>
+              <div className="text-zinc-500 text-xs uppercase">Peak Streak</div>
+              <div className="text-zinc-200 font-bold">{stateStats.longestFocusStreak}s</div>
+            </div>
+            <div>
+              <div className="text-zinc-500 text-xs uppercase">Session</div>
+              <div className="text-zinc-200 font-bold">{Math.round(stateStats.totalDuration / 60)}m</div>
+            </div>
+          </div>
         </div>
-      </div>
-
-      {/* Current state */}
-      <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
-        <div className="flex justify-between items-center">
-          <span className="text-zinc-400">Current State</span>
-          <span
-            className={`text-lg font-bold ${
-              attentionState === "locked-in"
-                ? "text-green-400"
-                : attentionState === "drifting"
-                  ? "text-yellow-400"
-                  : attentionState === "glazed"
-                    ? "text-orange-400"
-                    : "text-crimson"
-            }`}
-          >
-            {attentionState.toUpperCase()}
-          </span>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
