@@ -93,6 +93,24 @@ export default function SessionIntent({ onStart }: SessionIntentProps) {
           {loading ? "PARSING INTENT..." : "START SESSION"}
         </button>
 
+        <div className="relative flex items-center gap-4 my-2">
+          <div className="flex-1 h-px bg-zinc-800" />
+          <span className="text-xs text-zinc-600">or</span>
+          <div className="flex-1 h-px bg-zinc-800" />
+        </div>
+
+        <button
+          onClick={() => onStart("General focus session", {
+            goal: "General focus session",
+            allow: ["everything"],
+            block: [],
+            tone: "gentle",
+          })}
+          className="w-full py-3 rounded-xl bg-zinc-900 text-zinc-400 font-medium tracking-wide border border-zinc-800 hover:border-zinc-600 hover:text-zinc-300 transition-all"
+        >
+          QUICK START — SKIP SETUP
+        </button>
+
         <p className="text-center text-xs text-zinc-600">
           All data stays on your machine. Nothing leaves this browser.
         </p>
